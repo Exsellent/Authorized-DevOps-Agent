@@ -18,4 +18,4 @@ ENV PYTHONPATH=/app/src
 ENV PYTHONUNBUFFERED=1
 ENV LOG_LEVEL=INFO
 
-CMD ["uvicorn", "src.agents.triage_orchestrator.main:app", "--host", "0.0.0.0", "--port", "8500"]
+CMD ["uvicorn", "src.agents.orchestrator.main:app", "--host", "0.0.0.0", "--port", "8600"]
