@@ -323,8 +323,8 @@ class OrchestratorAgent(MCPAgent):
         self,
         repo: str,
         goal: str,
-        auth0_refresh_token: str,
-        auth0_access_token: Optional[str] = None,
+        auth0_refresh_token: Optional[str] = None,   # UI passes if entered; else uses .env
+        auth0_access_token:  Optional[str] = None,
         base_branch: str = "main",
         slack_notify: bool = True,
     ) -> Dict[str, Any]:
@@ -353,6 +353,20 @@ class OrchestratorAgent(MCPAgent):
         reasoning: List[ReasoningStep] = []
         github_token: Optional[VaultToken] = None
 
+        # Resolve token: UI field → .env → error
+        # Allows token to live in the server environment (not sent by UI every call)
+        resolved_refresh = auth0_refresh_token or os.getenv("AUTH0_REFRESH_TOKEN")
+        resolved_access  = auth0_access_token  or os.getenv("AUTH0_ACCESS_TOKEN")
+
+        if not resolved_refresh and not resolved_access:
+            return {
+                **self._error_response(
+                    reasoning,
+                    "Auth0 token required. Set AUTH0_REFRESH_TOKEN in .env or pass auth0_refresh_token.",
+                ),
+                "token_vault_used": False,
+            }
+
         # ── Step 1: Auth0 Token Vault exchange ────────────────────────────────
         self._step(
             reasoning,
@@ -360,8 +374,8 @@ class OrchestratorAgent(MCPAgent):
             input_data={"repo": repo, "goal": goal, "scope": "repo"},
         )
         try:
-            subject_token = auth0_refresh_token or auth0_access_token
-            use_refresh = bool(auth0_refresh_token)
+            subject_token = resolved_refresh or resolved_access
+            use_refresh = bool(resolved_refresh)
             github_token = await self.vault.get_github_token(
                 subject_token=subject_token,
                 scopes=["repo"],
@@ -642,7 +656,7 @@ class OrchestratorAgent(MCPAgent):
     async def triage_issues(
         self,
         repo: str,
-        auth0_refresh_token: str,
+        auth0_refresh_token: Optional[str] = None,   # UI or .env fallback
         limit: int = 20,
     ) -> Dict[str, Any]:
         """
@@ -654,11 +668,18 @@ class OrchestratorAgent(MCPAgent):
         """
         reasoning: List[ReasoningStep] = []
 
+        resolved_refresh = auth0_refresh_token or os.getenv("AUTH0_REFRESH_TOKEN")
+        if not resolved_refresh:
+            return self._error_response(
+                reasoning,
+                "Auth0 token required. Set AUTH0_REFRESH_TOKEN in .env or pass auth0_refresh_token.",
+            )
+
         self._step(reasoning, "Requesting read-only GitHub token from Token Vault",
                    input_data={"repo": repo, "scope": "repo:read"})
         try:
             github_token = await self.vault.get_github_token(
-                subject_token=auth0_refresh_token,
+                subject_token=resolved_refresh,
                 scopes=["repo"],
                 use_refresh_token=True,
             )
