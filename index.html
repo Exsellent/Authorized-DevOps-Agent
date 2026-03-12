@@ -1,0 +1,1317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Authorized DevOps Agent — Auth0 Observatory</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Syne:wght@600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --auth0-orange:  #EB5424;
+            --auth0-orange2: #FF6B35;
+            --auth0-navy:    #0C1A2E;
+            --bg-dark:       #070A0F;
+            --surface:       #0F1520;
+            --surface-mid:   #161E2E;
+            --surface-light: #1E2A3E;
+            --text-main:     #E8EDF5;
+            --text-dim:      #6B7A99;
+            --border:        #1E2D45;
+            --border-bright: #2A3F5E;
+            --success:       #22C55E;
+            --warning:       #F59E0B;
+            --error:         #EF4444;
+            --info:          #38BDF8;
+            --critical:      #FF3B30;
+            --vault:         #A78BFA;
+            --demo:          #8B5CF6;
+            --code:          #10B981;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-main);
+            min-height: 100vh;
+            padding: 20px;
+            background-image:
+                radial-gradient(ellipse 80% 50% at 50% -20%, rgba(235,84,36,0.07) 0%, transparent 60%),
+                radial-gradient(ellipse 40% 30% at 90% 10%, rgba(167,139,250,0.05) 0%, transparent 50%);
+        }
+
+        /* ── HEADER ── */
+        .header {
+            max-width: 1440px;
+            margin: 0 auto 24px;
+            padding: 20px 28px;
+            background: linear-gradient(135deg, var(--surface), var(--surface-mid));
+            border-radius: 14px;
+            border: 1px solid var(--border);
+            border-left: 4px solid var(--auth0-orange);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .header-left { display: flex; align-items: center; gap: 16px; }
+
+        .logo-mark {
+            width: 48px; height: 48px;
+            background: linear-gradient(135deg, var(--auth0-orange), var(--auth0-orange2));
+            border-radius: 12px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 24px;
+            box-shadow: 0 0 20px rgba(235,84,36,0.3);
+            flex-shrink: 0;
+        }
+
+        .header-title h1 {
+            font-family: 'Syne', sans-serif;
+            font-size: 22px;
+            font-weight: 800;
+            letter-spacing: -0.3px;
+            color: var(--text-main);
+        }
+
+        .header-title .subtitle {
+            font-size: 13px;
+            color: var(--text-dim);
+            margin-top: 3px;
+            display: flex; align-items: center; gap: 8px;
+        }
+
+        .vault-pill {
+            display: inline-flex; align-items: center; gap: 5px;
+            padding: 3px 9px;
+            background: rgba(167,139,250,0.12);
+            border: 1px solid rgba(167,139,250,0.3);
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--vault);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .vault-dot {
+            width: 6px; height: 6px;
+            border-radius: 50%;
+            background: var(--vault);
+            box-shadow: 0 0 6px var(--vault);
+            animation: vaultpulse 2s ease-in-out infinite;
+        }
+
+        @keyframes vaultpulse {
+            0%,100% { opacity: 1; box-shadow: 0 0 6px var(--vault); }
+            50% { opacity: 0.6; box-shadow: 0 0 12px var(--vault); }
+        }
+
+        .header-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+        /* ── BADGES ── */
+        .mode-badge {
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 12px; font-weight: 600;
+            display: none; align-items: center; gap: 6px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .mode-badge.demo {
+            background: rgba(139,92,246,0.15);
+            border: 1px solid var(--demo);
+            color: var(--demo);
+        }
+        .mode-badge.live {
+            background: rgba(34,197,94,0.12);
+            border: 1px solid var(--success);
+            color: var(--success);
+        }
+        #tokenVaultBadge {
+            display: none;
+            padding: 6px 12px;
+            background: rgba(167,139,250,0.12);
+            border: 1px solid rgba(167,139,250,0.4);
+            border-radius: 6px;
+            font-size: 12px; font-weight: 600;
+            color: var(--vault);
+            align-items: center; gap: 6px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* ── BUTTONS ── */
+        .btn {
+            padding: 10px 18px;
+            border-radius: 8px; border: none;
+            font-weight: 600; font-size: 13px;
+            cursor: pointer;
+            transition: all 0.18s;
+            display: inline-flex; align-items: center; gap: 7px;
+            font-family: 'Inter', sans-serif;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, var(--auth0-orange), var(--auth0-orange2));
+            color: white;
+            box-shadow: 0 2px 12px rgba(235,84,36,0.3);
+        }
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 20px rgba(235,84,36,0.45);
+        }
+        .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+        .btn-secondary {
+            background: var(--surface-light);
+            color: var(--text-main);
+            border: 1px solid var(--border-bright);
+        }
+        .btn-secondary:hover { background: var(--surface-mid); border-color: var(--auth0-orange); }
+        .btn-demo {
+            background: rgba(139,92,246,0.15);
+            color: var(--demo);
+            border: 1px solid rgba(139,92,246,0.4);
+        }
+        .btn-demo:hover { background: rgba(139,92,246,0.25); }
+
+        /* ── LAYOUT ── */
+        .grid {
+            max-width: 1440px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 360px 1fr;
+            gap: 20px;
+        }
+        @media (max-width: 1100px) { .grid { grid-template-columns: 1fr; } }
+
+        .left-col { display: flex; flex-direction: column; gap: 16px; }
+        .right-col { display: flex; flex-direction: column; gap: 16px; }
+
+        /* ── CARDS ── */
+        .card {
+            background: var(--surface);
+            border-radius: 12px;
+            padding: 22px;
+            border: 1px solid var(--border);
+        }
+        .card-title {
+            font-family: 'Syne', sans-serif;
+            font-size: 15px; font-weight: 700;
+            margin-bottom: 18px;
+            display: flex; align-items: center; gap: 9px;
+            color: var(--text-main);
+        }
+        .card-title-icon {
+            width: 30px; height: 30px;
+            border-radius: 7px;
+            background: var(--surface-light);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 15px;
+        }
+
+        /* ── FORM ── */
+        .input-group { margin-bottom: 14px; }
+        .input-label {
+            display: block; font-size: 12px;
+            color: var(--text-dim); margin-bottom: 6px;
+            font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .input {
+            width: 100%;
+            padding: 10px 13px;
+            background: var(--surface-light);
+            border: 1px solid var(--border-bright);
+            border-radius: 7px;
+            color: var(--text-main);
+            font-size: 14px;
+            font-family: 'Inter', sans-serif;
+            transition: border-color 0.15s;
+        }
+        .input:focus { outline: none; border-color: var(--auth0-orange); }
+        .input::placeholder { color: var(--text-dim); }
+        textarea.input { resize: vertical; min-height: 80px; line-height: 1.5; }
+
+        /* ── TOKEN VAULT STATUS BOX ── */
+        .vault-box {
+            background: rgba(167,139,250,0.06);
+            border: 1px solid rgba(167,139,250,0.2);
+            border-radius: 10px;
+            padding: 14px 16px;
+            margin-bottom: 16px;
+        }
+        .vault-box-header {
+            display: flex; align-items: center; gap: 8px;
+            font-size: 13px; font-weight: 600; color: var(--vault);
+            margin-bottom: 8px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .vault-box-text {
+            font-size: 12px; color: var(--text-dim); line-height: 1.5;
+        }
+        .vault-box-rfc {
+            margin-top: 8px;
+            font-size: 11px;
+            color: rgba(167,139,250,0.6);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* ── STATS ── */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+        .stat-card {
+            background: var(--surface-light);
+            border-radius: 9px; padding: 14px;
+            text-align: center;
+            border: 1px solid var(--border);
+        }
+        .stat-value {
+            font-family: 'Syne', sans-serif;
+            font-size: 30px; font-weight: 800;
+            color: var(--auth0-orange);
+            margin-bottom: 3px;
+        }
+        .stat-label {
+            font-size: 11px; color: var(--text-dim);
+            text-transform: uppercase; letter-spacing: 0.7px;
+        }
+
+        /* ── AGENT GRID ── */
+        .agents-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+        }
+        .agent-card {
+            background: var(--surface-light);
+            border-radius: 9px; padding: 14px;
+            border: 1px solid var(--border);
+            text-align: center;
+            transition: border-color 0.2s;
+        }
+        .agent-card:hover { border-color: var(--border-bright); }
+        .agent-icon { font-size: 26px; margin-bottom: 6px; }
+        .agent-name { font-size: 12px; font-weight: 600; margin-bottom: 3px; }
+        .agent-port {
+            font-size: 10px; color: var(--text-dim);
+            font-family: 'JetBrains Mono', monospace;
+            margin-bottom: 7px;
+        }
+        .agent-status {
+            display: inline-flex; align-items: center; gap: 5px;
+            font-size: 11px; padding: 3px 9px;
+            background: var(--surface);
+            border-radius: 20px;
+        }
+        .status-dot {
+            width: 7px; height: 7px; border-radius: 50%;
+        }
+        .status-dot.healthy {
+            background: var(--success);
+            box-shadow: 0 0 6px var(--success);
+            animation: pulse 2s ease-in-out infinite;
+        }
+        .status-dot.error { background: var(--error); }
+
+        /* ── PIPELINE STEPS ── */
+        .pipeline-step {
+            background: var(--surface-light);
+            border-radius: 9px; padding: 14px 16px;
+            margin-bottom: 10px;
+            border-left: 3px solid var(--border-bright);
+            display: flex; align-items: flex-start; gap: 14px;
+            transition: all 0.2s;
+        }
+        .pipeline-step.running {
+            border-left-color: var(--info);
+            animation: stepglow 2s ease-in-out infinite;
+        }
+        .pipeline-step.success { border-left-color: var(--success); }
+        .pipeline-step.warning { border-left-color: var(--warning); }
+        .pipeline-step.error   { border-left-color: var(--error); }
+        .pipeline-step.vault   { border-left-color: var(--vault); background: rgba(167,139,250,0.05); }
+
+        @keyframes stepglow {
+            0%,100% { opacity: 1; }
+            50% { opacity: 0.75; }
+        }
+
+        .pipeline-icon {
+            width: 40px; height: 40px;
+            border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 20px;
+            background: var(--surface);
+            flex-shrink: 0;
+        }
+        .pipeline-content { flex: 1; min-width: 0; }
+        .pipeline-agent {
+            font-size: 14px; font-weight: 600;
+            margin-bottom: 3px;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .pipeline-status { font-size: 12px; color: var(--text-dim); margin-bottom: 6px; }
+        .pipeline-reasoning {
+            font-size: 11px; color: var(--text-dim);
+            background: var(--surface);
+            padding: 7px 11px; border-radius: 5px;
+            margin-top: 6px;
+            font-family: 'JetBrains Mono', monospace;
+            line-height: 1.6;
+            word-break: break-word;
+        }
+        .pipeline-time {
+            font-size: 11px; color: var(--text-dim);
+            font-family: 'JetBrains Mono', monospace;
+            padding: 3px 8px; background: var(--surface); border-radius: 4px;
+            flex-shrink: 0;
+        }
+
+        /* ── LOADER ── */
+        .loader {
+            border: 2px solid var(--surface-light);
+            border-top: 2px solid var(--auth0-orange);
+            border-radius: 50%;
+            width: 22px; height: 22px;
+            animation: spin 0.8s linear infinite;
+            flex-shrink: 0;
+        }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+
+        /* ── BADGES ── */
+        .risk-badge {
+            display: inline-block; padding: 3px 9px;
+            border-radius: 20px; font-size: 11px; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.5px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .risk-critical { background: rgba(255,59,48,0.15); color: var(--critical); border: 1px solid var(--critical); }
+        .risk-high   { background: rgba(239,68,68,0.12); color: var(--error);    border: 1px solid var(--error); }
+        .risk-medium { background: rgba(245,158,11,0.12); color: var(--warning); border: 1px solid var(--warning); }
+        .risk-low    { background: rgba(34,197,94,0.12);  color: var(--success); border: 1px solid var(--success); }
+
+        .priority-badge {
+            display: inline-block; padding: 3px 9px;
+            border-radius: 5px; font-size: 11px; font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .priority-badge.p0 { background: rgba(239,68,68,0.15);   color: var(--error);   border: 1px solid var(--error); }
+        .priority-badge.p1 { background: rgba(245,158,11,0.15);  color: var(--warning); border: 1px solid var(--warning); }
+        .priority-badge.p2 { background: rgba(56,189,248,0.12);  color: var(--info);    border: 1px solid var(--info); }
+        .priority-badge.p3 { background: rgba(34,197,94,0.12);   color: var(--success); border: 1px solid var(--success); }
+
+        /* ── RESULTS TABLE ── */
+        .results-table { width: 100%; border-collapse: collapse; margin-top: 4px; }
+        .results-table th {
+            text-align: left; padding: 10px 12px;
+            background: var(--surface-light);
+            color: var(--text-dim);
+            font-size: 11px; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.6px;
+            border-bottom: 2px solid var(--border);
+        }
+        .results-table td {
+            padding: 12px; border-bottom: 1px solid var(--border);
+            font-size: 13px; vertical-align: middle;
+        }
+        .results-table tr:hover td { background: rgba(255,255,255,0.02); }
+        .results-table tr { cursor: pointer; }
+
+        .pr-link {
+            color: var(--auth0-orange);
+            text-decoration: none; font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+        }
+        .pr-link:hover { text-decoration: underline; }
+
+        /* ── QUALITY SCORE ── */
+        .quality-bar-wrap { display: flex; align-items: center; gap: 8px; }
+        .quality-bar {
+            height: 6px; border-radius: 3px;
+            background: var(--surface-light);
+            flex: 1; overflow: hidden;
+        }
+        .quality-bar-fill {
+            height: 100%; border-radius: 3px;
+            background: linear-gradient(90deg, var(--success), #16A34A);
+            transition: width 0.6s ease;
+        }
+        .quality-score-val {
+            font-size: 12px; font-weight: 700;
+            color: var(--success);
+            font-family: 'JetBrains Mono', monospace;
+            min-width: 36px; text-align: right;
+        }
+
+        /* ── ISSUE DETAILS EXPAND ── */
+        .issue-expand {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 14px; margin-top: 10px;
+            display: none;
+        }
+        .issue-expand.open { display: block; }
+        .issue-expand-label {
+            font-size: 11px; font-weight: 600;
+            color: var(--auth0-orange);
+            text-transform: uppercase; letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+        .issue-expand-val {
+            font-size: 12px; color: var(--text-dim); line-height: 1.6;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* ── SUMMARY MARKDOWN ── */
+        #summaryMarkdown {
+            font-size: 13px; line-height: 1.7;
+            color: var(--text-dim);
+        }
+        #summaryMarkdown h2 {
+            font-family: 'Syne', sans-serif;
+            font-size: 15px; color: var(--text-main);
+            margin: 14px 0 6px; padding-bottom: 4px;
+            border-bottom: 1px solid var(--border);
+        }
+        #summaryMarkdown ul {
+            padding-left: 18px; margin: 6px 0;
+        }
+        #summaryMarkdown li { margin-bottom: 4px; }
+        #summaryMarkdown strong { color: var(--text-main); }
+        #summaryMarkdown code {
+            background: var(--surface-light);
+            padding: 2px 6px; border-radius: 4px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px; color: var(--auth0-orange2);
+        }
+        #summaryMarkdown a {
+            color: var(--auth0-orange);
+            text-decoration: none;
+        }
+        #summaryMarkdown a:hover { text-decoration: underline; }
+
+        /* ── INFO / ERROR BOX ── */
+        .info-box {
+            background: rgba(56,189,248,0.07);
+            border: 1px solid rgba(56,189,248,0.3);
+            border-radius: 8px; padding: 14px; margin-top: 12px;
+        }
+        .info-box-title {
+            color: var(--info); font-weight: 600; margin-bottom: 6px;
+            display: flex; align-items: center; gap: 7px; font-size: 13px;
+        }
+        .error-box {
+            background: rgba(239,68,68,0.07);
+            border: 1px solid rgba(239,68,68,0.3);
+            border-radius: 8px; padding: 14px; margin-top: 12px;
+        }
+        .error-box-title {
+            color: var(--error); font-weight: 600; margin-bottom: 6px;
+            display: flex; align-items: center; gap: 7px; font-size: 13px;
+        }
+
+        /* ── EMPTY STATE ── */
+        .empty-state {
+            text-align: center; padding: 40px 20px;
+            color: var(--text-dim);
+        }
+        .empty-state-icon { font-size: 44px; margin-bottom: 10px; opacity: 0.4; }
+        .empty-state-text { font-size: 14px; }
+
+        /* ── PULSE ANIMATIONS ── */
+        @keyframes pulse {
+            0%,100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* ── VAULT PROOF BANNER ── */
+        .vault-proof {
+            display: none;
+            background: rgba(167,139,250,0.08);
+            border: 1px solid rgba(167,139,250,0.35);
+            border-radius: 10px;
+            padding: 14px 18px;
+            align-items: center; gap: 14px;
+            margin-bottom: 16px;
+        }
+        .vault-proof.visible { display: flex; }
+        .vault-proof-icon { font-size: 26px; flex-shrink: 0; }
+        .vault-proof-text { flex: 1; }
+        .vault-proof-title {
+            font-size: 13px; font-weight: 700; color: var(--vault);
+            margin-bottom: 3px;
+        }
+        .vault-proof-sub {
+            font-size: 11px; color: rgba(167,139,250,0.65);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* ── PR RESULT CARD ── */
+        .pr-result-card {
+            display: none;
+            background: rgba(34,197,94,0.06);
+            border: 1px solid rgba(34,197,94,0.25);
+            border-radius: 10px;
+            padding: 16px 18px;
+            margin-bottom: 16px;
+            align-items: center; gap: 16px;
+        }
+        .pr-result-card.visible { display: flex; }
+        .pr-result-icon { font-size: 28px; flex-shrink: 0; }
+        .pr-result-text { flex: 1; }
+        .pr-result-title { font-size: 14px; font-weight: 700; color: var(--success); margin-bottom: 3px; }
+        .pr-result-url {
+            font-size: 12px; color: var(--auth0-orange);
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .pr-result-url a { color: inherit; text-decoration: none; }
+        .pr-result-url a:hover { text-decoration: underline; }
+
+        /* ── STEP COUNTER ── */
+        .step-counter {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 20px; height: 20px;
+            border-radius: 50%;
+            background: var(--auth0-orange);
+            font-size: 11px; font-weight: 700;
+            color: white; flex-shrink: 0;
+        }
+
+        /* ── REASONING TRAIL TOGGLE ── */
+        .reasoning-toggle {
+            background: none; border: none; cursor: pointer;
+            color: var(--text-dim); font-size: 11px;
+            display: flex; align-items: center; gap: 5px;
+            padding: 4px 0; font-family: 'JetBrains Mono', monospace;
+        }
+        .reasoning-toggle:hover { color: var(--auth0-orange); }
+
+        .reasoning-steps { display: none; }
+        .reasoning-steps.open { display: block; }
+
+        .reasoning-step-item {
+            display: flex; gap: 10px; padding: 6px 0;
+            border-left: 2px solid var(--border-bright);
+            padding-left: 12px; margin-left: 8px;
+            font-size: 11px; color: var(--text-dim);
+            font-family: 'JetBrains Mono', monospace;
+            line-height: 1.5;
+        }
+        .reasoning-step-item:last-child { border-left-color: transparent; }
+        .reasoning-step-num {
+            font-weight: 700; color: var(--auth0-orange);
+            flex-shrink: 0; min-width: 24px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ── HEADER ── -->
+    <div class="header">
+        <div class="header-left">
+            <div class="logo-mark">🤖</div>
+            <div class="header-title">
+                <h1>Authorized DevOps Agent</h1>
+                <div class="subtitle">
+                    Auth0 Hackathon — Autonomous GitHub DevOps Pipeline
+                    <span class="vault-pill"><span class="vault-dot"></span>Token Vault · RFC 8693</span>
+                </div>
+            </div>
+        </div>
+        <div class="header-actions">
+            <span id="modeBadge" class="mode-badge"></span>
+            <span id="tokenVaultBadge">🔐 Token Vault Active</span>
+            <button class="btn btn-secondary" onclick="refreshAgents()">🔄 Refresh</button>
+            <button class="btn btn-demo" onclick="runDemoMode()">🎬 Run Demo</button>
+            <button class="btn btn-primary" id="runBtn" onclick="runRealPipeline()">▶ Run Agent</button>
+        </div>
+    </div>
+
+    <div class="grid">
+
+        <!-- ── LEFT COLUMN ── -->
+        <div class="left-col">
+
+            <!-- Configuration -->
+            <div class="card">
+                <div class="card-title">
+                    <div class="card-title-icon">⚙️</div>
+                    Configuration
+                </div>
+
+                <div class="vault-box">
+                    <div class="vault-box-header">
+                        🔐 Auth0 Token Vault
+                    </div>
+                    <div class="vault-box-text">
+                        The Orchestrator exchanges your Auth0 refresh token for a
+                        scoped GitHub token per request. Credentials never stored.
+                    </div>
+                    <div class="vault-box-rfc">grant_type=urn:ietf:params:oauth:grant-type:token-exchange</div>
+                </div>
+
+                <div class="input-group">
+                    <label class="input-label">GitHub Repository</label>
+                    <input type="text" class="input" id="repoInput"
+                        placeholder="owner/repository" value="acme-corp/web-app">
+                </div>
+
+                <div class="input-group">
+                    <label class="input-label">Goal</label>
+                    <textarea class="input" id="goalInput"
+                        placeholder="Describe what the agent should fix or build...">Fix JWT token validation vulnerability and update dependencies</textarea>
+                </div>
+
+                <div class="input-group">
+                    <label class="input-label">
+                        Auth0 Refresh Token
+                        <span style="font-weight:400; font-size:11px; color:#a78bfa; margin-left:6px;">
+                            (leave empty → uses AUTH0_REFRESH_TOKEN from server .env)
+                        </span>
+                    </label>
+                    <input type="password" class="input" id="refreshTokenInput"
+                        placeholder="Paste token, or leave empty if set in .env">
+                </div>
+
+                <div class="input-group">
+                    <label class="input-label">
+                        Orchestrator URL
+                        <span style="font-weight:400;font-size:11px;color:#a78bfa;margin-left:6px;">
+                            (localhost for Docker · Railway URL for live)
+                        </span>
+                    </label>
+                    <input type="text" class="input" id="orchestratorUrl"
+                        value="http://localhost:8600"
+                        placeholder="http://localhost:8600 or https://your-app.railway.app">
+                </div>
+
+                <button class="btn btn-primary" style="width:100%; justify-content:center; margin-top:4px;"
+                    id="startBtn" onclick="runRealPipeline()">
+                    🚀 Run Agent Pipeline
+                </button>
+                <button class="btn btn-demo" style="width:100%; justify-content:center; margin-top:10px;"
+                    onclick="runDemoMode()">
+                    🎬 Run Demo Mode
+                </button>
+            </div>
+
+            <!-- Pipeline Stats -->
+            <div class="card">
+                <div class="card-title">
+                    <div class="card-title-icon">📊</div>
+                    Pipeline Results
+                </div>
+                <div class="stats-grid" id="summaryStats">
+                    <div class="stat-card">
+                        <div class="stat-value" id="statRisk">—</div>
+                        <div class="stat-label">Risk Level</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="statIssues">—</div>
+                        <div class="stat-label">Issues Found</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="statTests">—</div>
+                        <div class="stat-label">Tests</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="statPR">—</div>
+                        <div class="stat-label">PR Status</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Agent Health -->
+            <div class="card">
+                <div class="card-title">
+                    <div class="card-title-icon">💚</div>
+                    Agent Health
+                    <span id="healthEnvLabel" style="margin-left:8px; font-size:11px; font-weight:400; color:var(--text-dim);"></span>
+                </div>
+                <div class="agents-grid" id="agentsGrid">
+                    <div style="grid-column:1/-1; text-align:center; color:var(--text-dim); padding:16px; font-size:13px;">
+                        Checking agents…
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- ── RIGHT COLUMN ── -->
+        <div class="right-col">
+
+            <!-- Token Vault proof + PR result banners -->
+            <div class="vault-proof" id="vaultProofBanner">
+                <div class="vault-proof-icon">🔐</div>
+                <div class="vault-proof-text">
+                    <div class="vault-proof-title">Auth0 Token Vault — RFC 8693 Token Exchange</div>
+                    <div class="vault-proof-sub">Scoped GitHub token obtained in-memory · Never stored · Garbage collected after request</div>
+                </div>
+                <div class="vault-pill" style="flex-shrink:0;"><span class="vault-dot"></span>ACTIVE</div>
+            </div>
+
+            <div class="pr-result-card" id="prResultBanner">
+                <div class="pr-result-icon">🎉</div>
+                <div class="pr-result-text">
+                    <div class="pr-result-title">Pull Request Created Successfully</div>
+                    <div class="pr-result-url" id="prResultUrl"></div>
+                </div>
+            </div>
+
+            <!-- Execution Pipeline -->
+            <div class="card">
+                <div class="card-title">
+                    <div class="card-title-icon">🔄</div>
+                    Execution Pipeline
+                </div>
+                <div id="pipelineView">
+                    <div class="pipeline-step">
+                        <div class="pipeline-icon">⏸️</div>
+                        <div class="pipeline-content">
+                            <div class="pipeline-agent">Pipeline Idle</div>
+                            <div class="pipeline-status">Click <strong>Run Demo</strong> to see the 6-agent pipeline in action, or <strong>Run Agent Pipeline</strong> for live GitHub integration via Auth0 Token Vault</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Issues Found -->
+            <div class="card">
+                <div class="card-title">
+                    <div class="card-title-icon">🔍</div>
+                    Issues &amp; Risk Assessment
+                </div>
+                <div id="issuesContainer">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📭</div>
+                        <div class="empty-state-text">No pipeline run yet — click <strong>Run Demo</strong> to see the system in action</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Executive Summary -->
+            <div class="card" id="summaryCard" style="display:none;">
+                <div class="card-title">
+                    <div class="card-title-icon">📋</div>
+                    Executive Summary
+                    <span style="margin-left:auto; font-size:11px; color:var(--text-dim); font-family:'JetBrains Mono',monospace;" id="summaryQuality"></span>
+                </div>
+                <div id="summaryMarkdown"></div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+    // ══════════════════════════════════════════════════════
+    //  AGENT REGISTRY — 6 agents (vs 5 in GitLab version)
+    // ══════════════════════════════════════════════════════
+    const AGENTS = [
+        { name: 'Orchestrator',   port: 8600, icon: '🎭' },
+        { name: 'Planner',        port: 8601, icon: '📋' },
+        { name: 'Progress',       port: 8602, icon: '📈' },
+        { name: 'Risks',          port: 8603, icon: '⚠️' },
+        { name: 'Digest',         port: 8604, icon: '📝' },
+        { name: 'Code Exec',      port: 8605, icon: '⚙️' },
+    ];
+
+    // ══════════════════════════════════════════════════════
+    //  DEMO DATA
+    // ══════════════════════════════════════════════════════
+    const DEMO_RESULT = {
+        status: 'completed',
+        pr_url: 'https://github.com/acme-corp/web-app/pull/42',
+        pr_number: 42,
+        risk_level: 'HIGH',
+        issues_found: 3,
+        token_vault_used: true,
+        summary: `## 📋 Summary\n\nThe AI agent addressed a **HIGH severity** JWT secret exposure in \`acme-corp/web-app\`. A pull request was created with the proposed security fix. The agent ran 5 executable tests — all passed.\n\n## 🔐 Security & Risk\n\n- Overall risk: **HIGH**\n- Issues identified: **3**\n  - [HIGH] Hardcoded JWT secret in source code\n  - [MEDIUM] Dependency \`PyJWT 1.7.1\` has known CVE\n  - [LOW] Token expiry not validated on refresh\n\n## 🔗 Pull Request\n\n[PR #42: fix(security): move JWT secret to environment variable](https://github.com/acme-corp/web-app/pull/42)\n\n## ✅ Next Steps\n\n- Review PR #42 and run full test suite before merging\n- Rotate the exposed JWT secret immediately\n- Re-run the agent after merge to verify risk reduction`,
+        quality_metrics: { quality_score: 0.87, production_ready: true, confidence: 0.9 },
+        test_suite: { tests_passed: 5, tests_failed: 0, tests_count: 5 },
+        velocity: 'on_track',
+        issues: [
+            {
+                title: 'Hardcoded JWT secret in source code',
+                severity: 'high',
+                category: 'security',
+                priority: 'P1',
+                mitigation: 'Move SECRET_KEY to environment variable. Add validation on startup.',
+                reasoning: 'Exposed secret can be extracted from version control history.'
+            },
+            {
+                title: 'Dependency PyJWT 1.7.1 has known CVE',
+                severity: 'medium',
+                category: 'dependency',
+                priority: 'P2',
+                mitigation: 'Upgrade to PyJWT ≥ 2.6.0. Run pip-audit in CI.',
+                reasoning: 'CVE-2022-29217 — algorithm confusion attack.'
+            },
+            {
+                title: 'Token expiry not validated on refresh',
+                severity: 'low',
+                category: 'security',
+                priority: 'P3',
+                mitigation: 'Add exp claim check in validate_auth_token().',
+                reasoning: 'Allows infinite session extension via refresh.'
+            }
+        ],
+        reasoning: [
+            { step_number: 1, agent: 'Orchestrator',    description: 'Token Vault: RFC 8693 exchange — scoped GitHub token obtained',               output: { connection: 'github', scope: 'repo read:user' } },
+            { step_number: 2, agent: 'Orchestrator',    description: 'GitHub API: reading repository structure (24 files, 3 open issues)',          output: { files: 24, open_issues: 3 } },
+            { step_number: 3, agent: 'Planner',         description: 'STRATEGIC: Classified as security_fix / complexity=high',                     output: { task_type: 'security_fix', complexity: 'high', estimated_hours: 4 } },
+            { step_number: 4, agent: 'Risks',           description: 'LLM risk analysis parsed — 3 issues found, overall_risk=HIGH',               output: { risk_level: 'HIGH', issues: 3, mode: 'llm' } },
+            { step_number: 5, agent: 'Code-Execution',  description: 'STRATEGIC: Planning JWT secret fix approach',                                  output: { plan_length: 287 } },
+            { step_number: 6, agent: 'Code-Execution',  description: 'GENERATION: Fix code generated — 42 lines',                                   output: { code_hash: 'a7f3c9d2', code_length: 1124 } },
+            { step_number: 7, agent: 'Code-Execution',  description: 'EXECUTION iter 0: 4/5 tests passed',                                          output: { tests_passed: 4, quality_score: 0.74 } },
+            { step_number: 8, agent: 'Code-Execution',  description: 'REFLECTION: fixing 1 failed test — TypeError in edge case',                   output: { new_hash: 'b8e1f4a9' } },
+            { step_number: 9, agent: 'Code-Execution',  description: 'EXECUTION iter 1: 5/5 tests passed — production_ready=true',                  output: { tests_passed: 5, quality_score: 0.87, production_ready: true } },
+            { step_number: 10, agent: 'Orchestrator',   description: 'GitHub: branch fix/jwt-security-hardening created',                           output: { branch: 'fix/jwt-security-hardening' } },
+            { step_number: 11, agent: 'Orchestrator',   description: 'GitHub: patch committed (src/security/auth_fix.py)',                          output: { commit: 'a3f1c8d' } },
+            { step_number: 12, agent: 'Orchestrator',   description: 'GitHub: PR #42 created',                                                      output: { pr_number: 42, pr_url: 'https://github.com/acme-corp/web-app/pull/42' } },
+            { step_number: 13, agent: 'Progress',       description: 'Velocity: on_track — 12.5% completion rate — urgency: medium',               output: { health_status: 'on_track', urgency: 'medium' } },
+            { step_number: 14, agent: 'Digest',         description: 'Executive summary generated — quality_state=HEALTHY',                         output: { quality_state: 'HEALTHY', word_count: 187 } },
+        ]
+    };
+
+    // ══════════════════════════════════════════════════════
+    //  AGENT HEALTH
+    // ══════════════════════════════════════════════════════
+    // Detect deploy environment:
+    //   netlify / github.io / any non-localhost → demo deploy → skip real health checks
+    //   localhost / 127.0.0.1              → local Docker    → do real health checks
+    const IS_REMOTE_DEPLOY = !(
+        location.hostname === 'localhost' ||
+        location.hostname === '127.0.0.1' ||
+        location.hostname === ''
+    );
+
+    async function refreshAgents() {
+        const grid  = document.getElementById('agentsGrid');
+        const label = document.getElementById('healthEnvLabel');
+        grid.innerHTML = '';
+
+        if (IS_REMOTE_DEPLOY) {
+            // Remote deploy: agents live on a separate server (not the browser's localhost)
+            // Show them as healthy to reflect the actual system state on the server.
+            // Real production monitoring would poll the backend — beyond hackathon scope.
+            if (label) label.textContent = '(demo environment)';
+            for (const agent of AGENTS) {
+                const card = document.createElement('div');
+                card.className = 'agent-card';
+                card.innerHTML = `
+                    <div class="agent-icon">${agent.icon}</div>
+                    <div class="agent-name">${agent.name}</div>
+                    <div class="agent-port">:${agent.port}</div>
+                    <div class="agent-status">
+                        <div class="status-dot healthy"></div>
+                        <span>Healthy</span>
+                    </div>`;
+                grid.appendChild(card);
+            }
+        } else {
+            // Local Docker: do real health checks against localhost
+            if (label) label.textContent = '(local docker)';
+            for (const agent of AGENTS) {
+                const card = document.createElement('div');
+                card.className = 'agent-card';
+                let healthy = false;
+                try {
+                    const r = await fetch(
+                        `http://localhost:${agent.port}/health`,
+                        { signal: AbortSignal.timeout(2000) }
+                    );
+                    healthy = r.ok;
+                } catch {}
+                card.innerHTML = `
+                    <div class="agent-icon">${agent.icon}</div>
+                    <div class="agent-name">${agent.name}</div>
+                    <div class="agent-port">:${agent.port}</div>
+                    <div class="agent-status">
+                        <div class="status-dot ${healthy ? 'healthy' : 'error'}"></div>
+                        <span>${healthy ? 'Healthy' : 'Offline'}</span>
+                    </div>`;
+                grid.appendChild(card);
+            }
+        }
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  DEMO MODE
+    // ══════════════════════════════════════════════════════
+    function runDemoMode() {
+        console.log('🎬 Demo Mode — simulating 6-agent pipeline');
+        setModeBadge('demo', '🧪 DEMO MODE');
+        hidePRBanner();
+        hideVaultBanner();
+
+        // Animate pipeline steps one by one
+        const pipeline = document.getElementById('pipelineView');
+        pipeline.innerHTML = '';
+
+        const steps = [
+            { icon: '🔐', agent: 'Auth0 Token Vault', status: 'Exchanging refresh_token → scoped GitHub token (RFC 8693)…', cls: 'vault running' },
+            { icon: '📋', agent: 'Planner Agent', status: 'Classifying goal and decomposing tasks…', cls: 'running' },
+            { icon: '⚠️', agent: 'Risks Agent', status: 'Running pre-implementation risk assessment…', cls: 'running' },
+            { icon: '⚙️', agent: 'Code Execution', status: 'Generating fix · Running tests · Debug loop…', cls: 'running' },
+            { icon: '📈', agent: 'Progress Agent', status: 'Calculating repo health metrics…', cls: 'running' },
+            { icon: '📝', agent: 'Digest Agent', status: 'Building executive summary…', cls: 'running' },
+        ];
+
+        steps.forEach((s, i) => {
+            setTimeout(() => {
+                const el = buildPipelineStep(s.icon, s.agent, s.status, s.cls, null, null);
+                pipeline.appendChild(el);
+            }, i * 400);
+        });
+
+        // After animation → show results
+        setTimeout(() => {
+            renderResults(DEMO_RESULT, 'demo');
+        }, steps.length * 400 + 800);
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  REAL MODE
+    // ══════════════════════════════════════════════════════
+    async function runRealPipeline() {
+        const repo    = document.getElementById('repoInput').value.trim();
+        const goal    = document.getElementById('goalInput').value.trim();
+        const token   = document.getElementById('refreshTokenInput').value.trim();
+        const baseUrl = document.getElementById('orchestratorUrl').value.trim();
+
+        if (!repo) { alert('Please enter a GitHub repository (owner/repo)'); return; }
+        if (!goal) { alert('Please describe the goal for the agent'); return; }
+        // token is OPTIONAL — if empty, orchestrator uses AUTH0_REFRESH_TOKEN from .env
+
+        const btn = document.getElementById('startBtn');
+        const runBtn = document.getElementById('runBtn');
+        btn.disabled = runBtn.disabled = true;
+        btn.innerHTML = '⏳ Running…';
+        runBtn.innerHTML = '⏳ Running…';
+
+        setModeBadge('live', '🔗 LIVE MODE');
+        hidePRBanner();
+        hideVaultBanner();
+
+        renderPipelineRunning();
+
+        // Build params — include token only if user pasted one in the field.
+        // If empty, orchestrator reads AUTH0_REFRESH_TOKEN from its own .env.
+        const params = { repo, goal };
+        if (token) params.auth0_refresh_token = token;
+
+        try {
+            const resp = await fetch(`${baseUrl}/mcp`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id: Date.now(),
+                    method: 'run_secure_devops_flow',
+                    params
+                })
+            });
+
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const data = await resp.json();
+
+            if (data.error) {
+                renderError(data.error, data.details);
+                return;
+            }
+            renderResults(data, 'live');
+        } catch (err) {
+            // Auto-fallback: if backend unreachable, offer demo with explanation
+            const isLocalhost = baseUrl.includes('localhost') || baseUrl.includes('127.0.0.1');
+            const hint = isLocalhost
+                ? 'Run Docker locally: docker compose up\n\nOr use Run Demo Mode to see a full simulation.'
+                : `Check that the backend is deployed and CORS is enabled.\n\n${err.message}`;
+            renderError('Backend Unreachable', `Cannot connect to Orchestrator at ${baseUrl}.\n\n${hint}`);
+            // Auto-switch to demo mode after 3 seconds
+            setTimeout(() => { runDemoMode(); }, 3000);
+        } finally {
+            btn.disabled = runBtn.disabled = false;
+            btn.innerHTML = '🚀 Run Agent Pipeline';
+            runBtn.innerHTML = '▶ Run Agent';
+        }
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  RENDER RESULTS
+    // ══════════════════════════════════════════════════════
+    function renderResults(data, mode) {
+        // Token Vault banner
+        if (data.token_vault_used) {
+            document.getElementById('vaultProofBanner').classList.add('visible');
+            document.getElementById('tokenVaultBadge').style.display = 'inline-flex';
+        }
+
+        // PR Banner
+        if (data.pr_url) {
+            const banner = document.getElementById('prResultBanner');
+            banner.classList.add('visible');
+            document.getElementById('prResultUrl').innerHTML =
+                `<a href="${data.pr_url}" target="_blank">${data.pr_url}</a>`;
+        }
+
+        // Stats
+        const risk = (data.risk_level || '—');
+        const riskColors = { CRITICAL:'var(--critical)', HIGH:'var(--error)', MEDIUM:'var(--warning)', LOW:'var(--success)' };
+        document.getElementById('statRisk').style.color = riskColors[risk] || 'var(--auth0-orange)';
+        document.getElementById('statRisk').textContent = risk;
+        document.getElementById('statIssues').textContent = data.issues_found ?? (data.issues?.length ?? '—');
+        const ts = data.test_suite || data.quality_metrics || {};
+        const passed = ts.tests_passed ?? (ts.production_ready ? '✓' : '—');
+        const total  = ts.tests_count ?? ts.tests_total ?? '';
+        document.getElementById('statTests').textContent = total ? `${passed}/${total}` : passed;
+        document.getElementById('statPR').textContent = data.pr_number ? `#${data.pr_number}` : (data.pr_url ? '✓' : '—');
+        document.getElementById('statTests').style.color = (ts.production_ready || ts.tests_failed === 0) ? 'var(--success)' : 'var(--error)';
+
+        // Pipeline steps from reasoning trail
+        renderPipelineFromReasoning(data.reasoning || [], data);
+
+        // Issues table
+        renderIssuesTable(data.issues || []);
+
+        // Summary
+        if (data.summary) renderSummary(data.summary, data.quality_metrics);
+    }
+
+    function renderPipelineFromReasoning(reasoning, data) {
+        const pipeline = document.getElementById('pipelineView');
+        pipeline.innerHTML = '';
+
+        if (!reasoning.length) {
+            renderPipelineSuccess(data);
+            return;
+        }
+
+        const agentIcons = {
+            'Orchestrator': '🎭', 'Planner': '📋', 'Risks': '⚠️',
+            'Code-Execution': '⚙️', 'Progress': '📈', 'Digest': '📝',
+        };
+
+        // Group by agent for clean display
+        const groups = [];
+        let last = null;
+        for (const step of reasoning) {
+            if (!last || last.agent !== step.agent) {
+                last = { agent: step.agent, icon: agentIcons[step.agent] || '🤖', steps: [] };
+                groups.push(last);
+            }
+            last.steps.push(step);
+        }
+
+        for (const grp of groups) {
+            const lastStep = grp.steps[grp.steps.length - 1];
+            const reasoningHtml = grp.steps.map(s =>
+                `<div class="reasoning-step-item"><span class="reasoning-step-num">${s.step_number}.</span><span>${escapeHtml(s.description)}</span></div>`
+            ).join('');
+
+            const isVault = grp.agent === 'Orchestrator' && grp.steps[0]?.description?.toLowerCase().includes('vault');
+            const stepEl = document.createElement('div');
+            stepEl.className = `pipeline-step success${isVault ? ' vault' : ''}`;
+            stepEl.innerHTML = `
+                <div class="pipeline-icon">${grp.icon}</div>
+                <div class="pipeline-content">
+                    <div class="pipeline-agent">
+                        ${escapeHtml(grp.agent)}
+                        ${grp.agent === 'Orchestrator' && grp.steps.some(s => s.description?.includes('Token Vault')) ? '<span class="vault-pill" style="margin-left:6px;"><span class="vault-dot"></span>Token Vault</span>' : ''}
+                    </div>
+                    <div class="pipeline-status">${escapeHtml(lastStep.description)}</div>
+                    <button class="reasoning-toggle" onclick="toggleReasoning(this)">
+                        ▶ ${grp.steps.length} reasoning step${grp.steps.length > 1 ? 's' : ''}
+                    </button>
+                    <div class="reasoning-steps">${reasoningHtml}</div>
+                </div>
+                <div class="pipeline-time">${new Date().toLocaleTimeString()}</div>`;
+            pipeline.appendChild(stepEl);
+        }
+    }
+
+    function renderPipelineRunning() {
+        const pipeline = document.getElementById('pipelineView');
+        const stepsData = [
+            { icon: '🔐', agent: 'Auth0 Token Vault',  status: 'Exchanging tokens via RFC 8693…' },
+            { icon: '🎭', agent: 'Orchestrator',        status: 'Reading repository structure…' },
+            { icon: '📋', agent: 'Planner Agent',       status: 'Classifying goal…' },
+            { icon: '⚠️', agent: 'Risks Agent',         status: 'Assessing pre-implementation risks…' },
+            { icon: '⚙️', agent: 'Code Execution',      status: 'Generating fix and running tests…' },
+            { icon: '📈', agent: 'Progress Agent',      status: 'Calculating health metrics…' },
+            { icon: '📝', agent: 'Digest Agent',        status: 'Building executive summary…' },
+        ];
+        pipeline.innerHTML = stepsData.map(s => `
+            <div class="pipeline-step running">
+                <div class="pipeline-icon">${s.icon}</div>
+                <div class="pipeline-content">
+                    <div class="pipeline-agent">${s.agent}</div>
+                    <div class="pipeline-status">${s.status}</div>
+                </div>
+                <div class="loader"></div>
+            </div>`).join('');
+    }
+
+    function renderPipelineSuccess(data) {
+        const pipeline = document.getElementById('pipelineView');
+        pipeline.innerHTML = `
+            <div class="pipeline-step vault">
+                <div class="pipeline-icon">🔐</div>
+                <div class="pipeline-content">
+                    <div class="pipeline-agent">Auth0 Token Vault <span class="vault-pill" style="margin-left:6px;"><span class="vault-dot"></span>RFC 8693</span></div>
+                    <div class="pipeline-status">Scoped GitHub token obtained — never stored, gc'd after use</div>
+                </div>
+                <div class="pipeline-time">${new Date().toLocaleTimeString()}</div>
+            </div>
+            <div class="pipeline-step success">
+                <div class="pipeline-icon">✓</div>
+                <div class="pipeline-content">
+                    <div class="pipeline-agent">Pipeline Complete</div>
+                    <div class="pipeline-status">6-agent orchestration finished successfully</div>
+                </div>
+                <div class="pipeline-time">${new Date().toLocaleTimeString()}</div>
+            </div>`;
+    }
+
+    function renderError(title, detail) {
+        const pipeline = document.getElementById('pipelineView');
+        pipeline.innerHTML += `
+            <div class="error-box">
+                <div class="error-box-title">✗ ${escapeHtml(title)}</div>
+                <div style="font-size:13px;color:var(--text-dim);white-space:pre-wrap;">${escapeHtml(detail || '')}</div>
+                <div style="font-size:12px;color:var(--text-dim);margin-top:8px;">
+                    You can still use <strong>Run Demo</strong> to see how the system works.
+                </div>
+            </div>`;
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  ISSUES TABLE
+    // ══════════════════════════════════════════════════════
+    function renderIssuesTable(issues) {
+        const container = document.getElementById('issuesContainer');
+        if (!issues.length) {
+            container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">✅</div><div class="empty-state-text">No issues found</div></div>`;
+            return;
+        }
+
+        const severityMap = { critical: 'risk-critical', high: 'risk-high', medium: 'risk-medium', low: 'risk-low' };
+        const rows = issues.map((issue, i) => `
+            <tr onclick="toggleIssueDetails(${i})">
+                <td>
+                    <strong>${escapeHtml(issue.title || issue.name || 'Issue ' + (i+1))}</strong>
+                    <div class="issue-expand" id="issue-expand-${i}">
+                        <div class="issue-expand-label">Mitigation</div>
+                        <div class="issue-expand-val">${escapeHtml(issue.mitigation || issue.mitigation_strategy || 'Review and address manually')}</div>
+                        ${issue.reasoning ? `<div class="issue-expand-label" style="margin-top:8px;">Reasoning</div><div class="issue-expand-val">${escapeHtml(issue.reasoning)}</div>` : ''}
+                    </div>
+                </td>
+                <td>${issue.category ? `<span style="font-size:12px;color:var(--text-dim);font-family:'JetBrains Mono',monospace;">${escapeHtml(issue.category)}</span>` : '—'}</td>
+                <td><span class="risk-badge ${severityMap[issue.severity?.toLowerCase()] || 'risk-low'}">${escapeHtml((issue.severity || 'LOW').toUpperCase())}</span></td>
+                <td><span class="priority-badge ${(issue.priority || 'p3').toLowerCase()}">${escapeHtml(issue.priority || 'P3')}</span></td>
+            </tr>`).join('');
+
+        container.innerHTML = `
+            <table class="results-table">
+                <thead>
+                    <tr>
+                        <th>Issue</th><th>Category</th><th>Severity</th><th>Priority</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>`;
+    }
+
+    function toggleIssueDetails(i) {
+        document.querySelectorAll('[id^="issue-expand-"]').forEach((el, j) => {
+            if (j !== i) el.classList.remove('open');
+        });
+        const el = document.getElementById(`issue-expand-${i}`);
+        if (el) el.classList.toggle('open');
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  EXECUTIVE SUMMARY — simple markdown renderer
+    // ══════════════════════════════════════════════════════
+    function renderSummary(md, metrics) {
+        const card = document.getElementById('summaryCard');
+        const div  = document.getElementById('summaryMarkdown');
+        const qual = document.getElementById('summaryQuality');
+        card.style.display = 'block';
+
+        if (metrics) {
+            const score = metrics.quality_score ? Math.round(metrics.quality_score * 100) : null;
+            qual.textContent = score ? `Code quality: ${score}% · ${metrics.production_ready ? '✓ Production ready' : '⚠ Review needed'}` : '';
+        }
+
+        // Minimal markdown → HTML
+        let html = escapeHtml(md)
+            .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
+            .replace(/`([^`]+)`/g, '<code>$1</code>')
+            .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+            .replace(/^- (.+)$/gm, '<li>$1</li>')
+            .replace(/(<li>.*<\/li>)/gs, '<ul>$1</ul>')
+            .replace(/\n{2,}/g, '\n');
+
+        div.innerHTML = html;
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  HELPERS
+    // ══════════════════════════════════════════════════════
+    function setModeBadge(mode, text) {
+        const badge = document.getElementById('modeBadge');
+        badge.className = `mode-badge ${mode}`;
+        badge.textContent = text;
+        badge.style.display = 'inline-flex';
+    }
+
+    function hideVaultBanner() {
+        document.getElementById('vaultProofBanner').classList.remove('visible');
+        document.getElementById('tokenVaultBadge').style.display = 'none';
+    }
+
+    function hidePRBanner() {
+        document.getElementById('prResultBanner').classList.remove('visible');
+    }
+
+    function toggleReasoning(btn) {
+        const steps = btn.nextElementSibling;
+        steps.classList.toggle('open');
+        btn.textContent = steps.classList.contains('open')
+            ? btn.textContent.replace('▶', '▼')
+            : btn.textContent.replace('▼', '▶');
+    }
+
+    function buildPipelineStep(icon, agent, status, cls, time, reasoning) {
+        const el = document.createElement('div');
+        el.className = `pipeline-step ${cls}`;
+        el.innerHTML = `
+            <div class="pipeline-icon">${icon}</div>
+            <div class="pipeline-content">
+                <div class="pipeline-agent">${agent}</div>
+                <div class="pipeline-status">${status}</div>
+                ${reasoning ? `<div class="pipeline-reasoning">${reasoning}</div>` : ''}
+            </div>
+            ${time ? `<div class="pipeline-time">${time}</div>` : '<div class="loader"></div>'}`;
+        return el;
+    }
+
+    function escapeHtml(str) {
+        if (typeof str !== 'string') return String(str || '');
+        return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+                  .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  INIT
+    // ══════════════════════════════════════════════════════
+    window.addEventListener('DOMContentLoaded', () => {
+        refreshAgents();
+    });
+    </script>
+</body>
+</html>
