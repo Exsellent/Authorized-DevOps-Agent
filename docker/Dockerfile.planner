@@ -19,4 +19,4 @@ ENV PYTHONPATH=/app/src
 ENV PYTHONUNBUFFERED=1
 ENV LOG_LEVEL=INFO
 
-CMD ["uvicorn", "src.agents.planner.main:app", "--host", "0.0.0.0", "--port", "8601"]
+CMD ["uvicorn", "agents.planner.main:app", "--host", "0.0.0.0", "--port", "8601"]
