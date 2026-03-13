@@ -1,0 +1,168 @@
+services:
+
+
+  planner:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.planner
+    ports:
+      - "8601:8601"
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8601/health')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - agent-net
+    dns:
+      - 8.8.8.8
+
+  risks:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.risks
+    ports:
+      - "8603:8603"
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8603/health')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - agent-net
+    dns:
+      - 8.8.8.8
+
+  code_execution:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.code_execution
+    ports:
+      - "8605:8605"
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8605/health')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - agent-net
+    dns:
+      - 8.8.8.8
+
+  progress:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.progress
+    ports:
+      - "8602:8602"
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8602/health')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - agent-net
+    dns:
+      - 8.8.8.8
+
+  digest:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.digest
+    ports:
+      - "8604:8604"
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8604/health')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - agent-net
+    dns:
+      - 8.8.8.8
+
+  # ── Orchestrator (запускается после агентов) ─────────────────────────────────
+
+  orchestrator:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.orchestrator
+    ports:
+      - "8600:8600"
+    env_file:
+      - .env
+    environment:
+      # ── Auth0 Token Vault (RFC 8693) ──────────────────────────────────────
+      - AUTH0_DOMAIN=${AUTH0_DOMAIN}
+      - AUTH0_CLIENT_ID=${AUTH0_CLIENT_ID}
+      - AUTH0_CLIENT_SECRET=${AUTH0_CLIENT_SECRET}
+      # ── Agent URLs (inside the Docker network by service name) ─────────────────
+      - PLANNER_URL=http://planner:8601
+      - RISKS_URL=http://risks:8603
+      - CODE_EXEC_URL=http://code_execution:8605
+      - PROGRESS_URL=http://progress:8602
+      - DIGEST_URL=http://digest:8604
+      # ── Optional integrations ───────────────────────────────────────────
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
+    depends_on:
+      planner:
+        condition: service_healthy
+      risks:
+        condition: service_healthy
+      code_execution:
+        condition: service_healthy
+      progress:
+        condition: service_healthy
+      digest:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8600/health')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - agent-net
+    dns:
+      - 8.8.8.8
+
+  # ── Static frontend ──────────────────────────────────────────────────────────
+
+  static:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.static
+    ports:
+      - "8000:80"
+    depends_on:
+      orchestrator:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/index.html"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    networks:
+      - agent-net
+    dns:
+      - 8.8.8.8
+
+networks:
+  agent-net:
+    driver: bridge
