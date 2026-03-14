@@ -73,9 +73,9 @@ The system runs a **six‑agent autonomous pipeline**:
 5. **Orchestrator** — creates branch, commits patches, opens the GitHub Pull Request  
 6. **Progress + Digest** — repository health metrics and human‑readable executive summary  
 
-https://github.com/Exsellent/Authorized-DevOps-Agent/blob/main/assets/demo-video-agents.mp4
-
 The upstream agent (OpenClaw or any AI) never sees the GitHub token. The token exists for one request, is used, then garbage‑collected.
+
+https://github.com/Exsellent/Authorized-DevOps-Agent/raw/main/assets/demo-video-agents-fixed.mp4
 
 
 ---
@@ -144,14 +144,14 @@ The field `token_vault_used: true` appears in every API response and in the body
 
 ## 🏭 Agent Pipeline
 
-| Agent                 | Port   | Responsibility                                                                                                                                                                                  |
-|-----------------------|--------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| 🎭 **Orchestrator**   | 8600   | Sole owner of the Token Vault client. Coordinates all agents. Reads repo, creates branch, commits patch files, opens PR.                                                                        |
-| 📋 **Planner**        | 8601   | Classifies the goal (security_fix / bug_fix / dependency_update / feature), decomposes into subtasks, estimates effort and complexity.                                                          |
-| ⚠️ **Risks**          | 8603   | **Dual‑pass.** Phase 1: planning‑phase risk assessment (design, CVE, integration). Phase 2: post‑generation patch gate — scans generated files for forbidden patterns before the PR is created. |
-| 📟 **Code Execution** | 8605   | Generates Python fix, writes tests, runs them in isolated subprocesses, self‑corrects through a reflection loop (up to 3 iterations). Returns base64‑encoded patch files.                       |
-| 📊 **Progress**       | 8602   | Calculates repo health metrics. Classifies velocity and urgency. Determines escalation requirements.                                                                                            |
-| 📝 **Digest**         | 8604   | Generates Markdown executive summary and compact Slack message from all agent outputs.                                                                                                          |
+| Agent              | Port | Responsibility                                                                                                                                             |
+|--------------------|------|-------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 🎭 **Orchestrator** | 8600 | Sole owner of the Token Vault client. Coordinates all agents. Reads repo, creates branch, commits patch files, opens PR.                                   |
+| 📋 **Planner**      | 8601 | Classifies the goal (security_fix / bug_fix / dependency_update / feature), decomposes into subtasks, estimates effort and complexity.                     |
+| ⚠️ **Risks**        | 8603 | **Dual‑pass.** Phase 1: planning‑phase risk assessment (design, CVE, integration). Phase 2: post‑generation patch gate — scans generated files for forbidden patterns before the PR is created. |
+| 📟 **Code Execution**| 8605 | Generates Python fix, writes tests, runs them in isolated subprocesses, self‑corrects through a reflection loop (up to 3 iterations). Returns base64‑encoded patch files. |
+| 📊 **Progress**      | 8602 | Calculates repo health metrics. Classifies velocity and urgency. Determines escalation requirements.                                                        |
+| 📝 **Digest**        | 8604 | Generates Markdown executive summary and compact Slack message from all agent outputs.                                                                      |
 
 ---
 
@@ -243,16 +243,16 @@ Observatory UI: [https://authorized-devops-agent.netlify.app](https://authorized
 
 ## 📡 Tech Stack
 
-| Component         | Technology                                                       |
-|-------------------|------------------------------------------------------------------|
+| Component         | Technology                                      |
+|-------------------|-------------------------------------------------|
 | Identity & Auth   | Auth0 Token Vault · RFC 8693 Token Exchange · Connected Accounts |
-| AI / LLM          | Anthropic Claude 3.5 Sonnet                                      |
-| Agent Protocol    | MCP (Model Context Protocol) over HTTP                           |
-| Runtime           | Python 3.12 · FastAPI · asyncio · httpx                          |
-| Infrastructure    | Docker Compose                                                   |
-| GitHub API        | REST API v2022‑11‑28                                             |
-| Notifications     | Slack Incoming Webhooks                                          |
-| Frontend          | Vanilla JS · Observatory UI (Netlify)                            |
+| AI / LLM          | Anthropic Claude 3.5 Sonnet                     |
+| Agent Protocol    | MCP (Model Context Protocol) over HTTP          |
+| Runtime           | Python 3.12 · FastAPI · asyncio · httpx         |
+| Infrastructure    | Docker Compose                                  |
+| GitHub API        | REST API v2022‑11‑28                            |
+| Notifications     | Slack Incoming Webhooks                         |
+| Frontend          | Vanilla JS · Observatory UI (Netlify)           |
 
 ---
 
