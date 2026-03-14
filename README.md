@@ -73,7 +73,7 @@ The system runs a **six‑agent autonomous pipeline**:
 5. **Orchestrator** — creates branch, commits patches, opens the GitHub Pull Request  
 6. **Progress + Digest** — repository health metrics and human‑readable executive summary  
 
-https://github.com/Exsellent/Authorized-DevOps-Agent/raw/main/assets/demo-video-agents-fixed.mp4
+https://github.com/Exsellent/Authorized-DevOps-Agent/blob/main/assets/demo-video-agents.mp4
 
 The upstream agent (OpenClaw or any AI) never sees the GitHub token. The token exists for one request, is used, then garbage‑collected.
 
