@@ -11,34 +11,24 @@ Consumed by:
   - Orchestrator (generate_digest → summary, slack_message)
   - UI Observatory (reasoning trail + summary field)
 
-Changes vs. original GitLab version:
-  - CRITICAL: register_tool("generate_digest") added — Orchestrator calls
-    this tool by name; original had no such tool → KeyError at runtime
-  - generate_digest: new primary method that accepts structured data from
-    Orchestrator (repo, goal, risk_level, issues_found, pr_url, progress)
-  - daily_digest: kept as secondary tool but prompt updated to GitHub context
-  - _validate_digest_quality: validation now checks DevOps-relevant content
-    (PR link, risk level, issues list) instead of "mood/morale" keywords
-  - _determine_quality_state: removed "has_mood" as a required field
-  - MAX_WORD_COUNT raised 200 → 500 (200 was too tight for a PR report)
-  - auto_actions: "post_to_gitlab_wiki" → "post_to_github_comment"
-  - log_method: added @wraps
-  - logger.extra= dicts removed (breaks some log handlers)
-  - GitLab platform / gitlab_integration removed from metadata / health check
-  - auth0_token_vault: False explicit in health check
 """
 
 import logging
 from dataclasses import dataclass, asdict
 from datetime import date as date_module, datetime
 from enum import Enum
-from functools import wraps
 from typing import Any, Dict, List, Optional
 
 from shared.llm_client import LLMClient
 from shared.mcp_base import MCPAgent
 from shared.metrics import metric_counter
-from shared.models import ReasoningStep
+from shared.utils import (
+    is_invalid_response,
+    log_method,
+    next_step,
+    normalize_reasoning,
+    sanitize_user_input,
+)
 
 logger = logging.getLogger("digest_agent")
 
@@ -49,35 +39,18 @@ class DigestStatus(Enum):
     HEALTHY  = "HEALTHY"
     WARNING  = "WARNING"
     DEGRADED = "DEGRADED"
-    UNKNOWN  = "UNKNOWN"
 
 
 @dataclass
 class DigestValidation:
     word_count:       int
     under_limit:      bool
-    has_pr_section:   bool   # was has_achievements — DevOps-relevant
-    has_risk_section: bool   # was has_blockers
-    has_summary:      bool   # was has_mood — always true for structured digest
+    has_pr_section:   bool
+    has_risk_section: bool
+    has_summary:      bool
     tone_positive:    bool
     confidence:       float
     quality_state:    str
-
-
-# ── Decorator ─────────────────────────────────────────────────────────────────
-
-def log_method(func):
-    @wraps(func)   # FIX: was missing @wraps in original
-    async def wrapper(self, *args, **kwargs):
-        logger.info("%s called", func.__name__)
-        try:
-            result = await func(self, *args, **kwargs)
-            logger.info("%s completed", func.__name__)
-            return result
-        except Exception as exc:
-            logger.error("%s failed: %s", func.__name__, exc)
-            raise
-    return wrapper
 
 
 # ── Agent ─────────────────────────────────────────────────────────────────────
@@ -92,7 +65,6 @@ class DigestAgent(MCPAgent):
     Secondary tool: daily_digest — standalone daily report from free-text context.
     """
 
-    # FIX: raised from 200 → 500 (200 was too tight for a PR report with risk list)
     MAX_WORD_COUNT = 500
     MIN_WORD_COUNT = 40
 
@@ -103,40 +75,23 @@ class DigestAgent(MCPAgent):
         super().__init__("Digest")
         self.llm = LLMClient()
 
-        # FIX: generate_digest was missing — Orchestrator calls this tool name
-        self.register_tool("generate_digest",  self.generate_digest)
-        self.register_tool("daily_digest",      self.daily_digest)
-        self.register_tool("validate_digest",   self.validate_digest)
+        self.register_tool("generate_digest",    self.generate_digest)
+        self.register_tool("daily_digest",       self.daily_digest)
+        self.register_tool("validate_digest",    self.validate_digest)
         self.register_tool("extract_key_points", self.extract_key_points)
 
         logger.info("DigestAgent initialised")
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
-    def _next_step(
-        self,
-        reasoning: List[ReasoningStep],
-        description: str,
-        input_data:  Optional[Dict] = None,
-        output_data: Optional[Dict] = None,
+    def _step(
+            self,
+            reasoning: list,
+            description: str,
+            input_data: Optional[Dict] = None,
+            output_data: Optional[Dict] = None,
     ) -> None:
-        reasoning.append(ReasoningStep(
-            step_number=len(reasoning) + 1,
-            description=description,
-            timestamp=datetime.now().isoformat(),
-            input_data=input_data or {},
-            output=output_data or {},
-            agent=self.name,
-        ))
-
-    def _is_invalid_response(self, response: str) -> bool:
-        lower = response.lower()
-        bad = [
-            "[stub]", "[llm error]", "[claude error]",
-            "unauthorized", "401", "client error",
-            "connection error", "timeout",
-        ]
-        return any(b in lower for b in bad)
+        next_step(reasoning, description, self.name, input_data, output_data)
 
     # ── Validation ────────────────────────────────────────────────────────────
 
@@ -145,12 +100,11 @@ class DigestAgent(MCPAgent):
         Quality check tuned for DevOps PR reports, not daily standup notes.
         Checks for: PR section, risk section, summary presence, word count.
         """
-        words     = digest.split()
+        words      = digest.split()
         word_count = len(words)
-        lower     = digest.lower()
+        lower      = digest.lower()
 
-        # DevOps-relevant section checks
-        has_pr_section   = any(k in lower for k in [
+        has_pr_section = any(k in lower for k in [
             "pull request", "pr #", "pr created", "branch", "commit",
             "patch", "fix", "no pr", "pr url",
         ])
@@ -158,7 +112,7 @@ class DigestAgent(MCPAgent):
             "risk", "critical", "high", "medium", "low",
             "security", "issue", "vulnerability", "concern",
         ])
-        has_summary = word_count >= self.MIN_WORD_COUNT  # any non-empty text counts
+        has_summary = word_count >= self.MIN_WORD_COUNT
 
         tone_positive = any(k in lower for k in [
             "success", "created", "fixed", "resolved", "improved",
@@ -196,7 +150,6 @@ class DigestAgent(MCPAgent):
         has_pr_section: bool,
         has_risk_section: bool,
     ) -> str:
-        # FIX: was "if not has_achievements or not has_mood" — mood is irrelevant here
         if not has_pr_section and not has_risk_section:
             return DigestStatus.DEGRADED.value
         if confidence < self.CONFIDENCE_THRESHOLD_WARNING:
@@ -223,9 +176,9 @@ class DigestAgent(MCPAgent):
         current: Optional[str] = None
 
         heading_map = {
-            ("pull request", "pr created", "pr #", "branch"):          "pr_summary",
-            ("risk", "security", "issues found", "vulnerabilit"):       "risk_summary",
-            ("next step", "recommendation", "action", "suggested"):     "next_steps",
+            ("pull request", "pr created", "pr #", "branch"):      "pr_summary",
+            ("risk", "security", "issues found", "vulnerabilit"):   "risk_summary",
+            ("next step", "recommendation", "action", "suggested"): "next_steps",
         }
 
         for line in lines:
@@ -279,17 +232,17 @@ class DigestAgent(MCPAgent):
 
     # ── MCP Tool: generate_digest (PRIMARY — called by Orchestrator) ──────────
 
-    @log_method
     @metric_counter("digest")
+    @log_method
     async def generate_digest(
         self,
-        repo:          Optional[str]       = None,
-        goal:          Optional[str]       = None,
-        risk_level:    str                 = "MEDIUM",
-        issues_found:  Optional[List]      = None,
-        pr_url:        Optional[str]       = None,
-        pr_number:     Optional[int]       = None,
-        progress:      Optional[Dict]      = None,
+        repo:          Optional[str]  = None,
+        goal:          Optional[str]  = None,
+        risk_level:    str            = "MEDIUM",
+        issues_found:  Optional[List] = None,
+        pr_url:        Optional[str]  = None,
+        pr_number:     Optional[int]  = None,
+        progress:      Optional[Dict] = None,
     ) -> Dict[str, Any]:
         """
         Generate executive summary from the full pipeline run.
@@ -306,17 +259,20 @@ class DigestAgent(MCPAgent):
             pr_number:    GitHub PR number
             progress:     Dict from Progress Agent (health_status, velocity, …)
         """
-        reasoning: List[ReasoningStep] = []
+        from shared.models import ReasoningStep  # type hint only
+        reasoning: list[ReasoningStep] = []
         issues_found = issues_found or []
         progress     = progress or {}
 
-        repo_display   = repo or "repository"
-        goal_display   = goal or "DevOps automation task"
-        health_status  = progress.get("health_status", progress.get("velocity", "unknown"))
-        issues_count   = len(issues_found)
-        pr_line        = f"PR #{pr_number}: {pr_url}" if pr_url else "No PR created"
+        # Sanitize user-provided inputs before prompt interpolation
+        repo_display  = sanitize_user_input(repo)  if repo  else "repository"
+        goal_display  = sanitize_user_input(goal)  if goal  else "DevOps automation task"
 
-        self._next_step(
+        health_status = progress.get("health_status", progress.get("velocity", "unknown"))
+        issues_count  = len(issues_found)
+        pr_line       = f"PR #{pr_number}: {pr_url}" if pr_url else "No PR created"
+
+        self._step(
             reasoning,
             "Generating executive summary from pipeline results",
             input_data={
@@ -378,20 +334,20 @@ Requirements:
 - Do NOT mention Auth0 internal implementation details
 """
 
-        self._next_step(
+        self._step(
             reasoning,
             "Generating LLM executive summary",
             output_data={"prompt_length": len(prompt)},
         )
 
-        digest     = ""
+        digest       = ""
         llm_fallback = False
 
         try:
             digest = await self.llm.chat(prompt)
-            if self._is_invalid_response(digest):
+            if is_invalid_response(digest):
                 llm_fallback = True
-                self._next_step(
+                self._step(
                     reasoning,
                     "LLM response invalid — using structured fallback",
                     output_data={"fallback_reason": "invalid_response"},
@@ -399,7 +355,7 @@ Requirements:
         except Exception as exc:
             logger.error("LLM digest generation failed: %s", exc)
             llm_fallback = True
-            self._next_step(
+            self._step(
                 reasoning,
                 f"LLM call failed — using structured fallback: {exc}",
                 output_data={"fallback_reason": "exception"},
@@ -437,7 +393,7 @@ Overall risk level assessed as **{risk_level}**.
         # ── Validate quality ──────────────────────────────────────────────────
         validation = self._validate_digest_quality(digest)
 
-        self._next_step(
+        self._step(
             reasoning,
             "Digest quality validated",
             output_data={
@@ -451,7 +407,6 @@ Overall risk level assessed as **{risk_level}**.
         )
 
         # ── Auto actions ──────────────────────────────────────────────────────
-        # FIX: replaced "post_to_gitlab_wiki" with "post_to_github_comment"
         auto_actions = ["post_to_github_comment", "send_to_slack"]
         if risk_level in ("CRITICAL", "HIGH"):
             auto_actions.append("notify_pm")
@@ -460,7 +415,7 @@ Overall risk level assessed as **{risk_level}**.
         if pr_url and risk_level in ("LOW", "MEDIUM"):
             auto_actions.append("post_celebration")
 
-        self._next_step(
+        self._step(
             reasoning,
             "Executive summary generation complete",
             output_data={
@@ -470,7 +425,6 @@ Overall risk level assessed as **{risk_level}**.
             },
         )
 
-        # FIX: plain %s — no logger.extra= dict
         logger.info(
             "generate_digest done — repo=%s risk=%s pr=%s quality=%s fallback=%s",
             repo_display, risk_level, pr_number, validation.quality_state, llm_fallback,
@@ -509,7 +463,7 @@ Overall risk level assessed as **{risk_level}**.
 
             # ── Actions ───────────────────────────────────────────────────────
             "automated_actions": {
-                "actions":         auto_actions,
+                "actions":          auto_actions,
                 "escalation_level": (
                     "leadership" if "alert_leadership" in auto_actions
                     else "pm"    if "notify_pm"        in auto_actions
@@ -520,18 +474,18 @@ Overall risk level assessed as **{risk_level}**.
             },
 
             "fallback_used": llm_fallback,
-            "reasoning":     reasoning,
+            "reasoning":     normalize_reasoning(reasoning),
             "metadata": {
                 "agent":             self.name,
-                "auth0_token_vault": False,  # explicit: Digest does NOT use Token Vault
+                "auth0_token_vault": False,
                 "timestamp":         datetime.now().isoformat(),
             },
         }
 
     # ── MCP Tool: daily_digest (secondary — standalone daily report) ──────────
 
-    @log_method
     @metric_counter("digest")
+    @log_method
     async def daily_digest(
         self,
         date:    Optional[str] = None,
@@ -547,22 +501,24 @@ Overall risk level assessed as **{risk_level}**.
             context: Free-text project context / data.
             repo:    "owner/repo" (optional, for prompt context).
         """
-        reasoning: List[ReasoningStep] = []
+        from shared.models import ReasoningStep  # type hint only
+        reasoning: list[ReasoningStep] = []
 
         if date is None:
             date = date_module.today().isoformat()
 
-        repo_display = repo or "GitHub repository"
+        # Sanitize user-provided inputs before prompt interpolation
+        safe_context = sanitize_user_input(context) if context else None
+        repo_display = sanitize_user_input(repo) if repo else "GitHub repository"
 
-        self._next_step(
+        self._step(
             reasoning,
             "Daily digest generation requested",
             input_data={"date": date, "repo": repo_display, "context_provided": bool(context)},
         )
 
-        context_section = f"\nPROJECT DATA:\n{context}\n" if context else ""
+        context_section = f"\nPROJECT DATA:\n{safe_context}\n" if safe_context else ""
 
-        # FIX: prompt updated from GitLab CI/CD → GitHub Actions context
         prompt = f"""You are an autonomous daily reporting agent in a GitHub DevOps workflow.
 
 Generating daily digest for: {repo_display} — {date}
@@ -592,12 +548,12 @@ Requirements:
 - Specific — no generic filler phrases
 """
 
-        digest = ""
+        digest       = ""
         llm_fallback = False
 
         try:
             digest = await self.llm.chat(prompt)
-            if self._is_invalid_response(digest):
+            if is_invalid_response(digest):
                 llm_fallback = True
         except Exception as exc:
             logger.error("LLM daily digest failed: %s", exc)
@@ -619,7 +575,7 @@ None currently identified.
 Team collaboration remains strong. Engineers are engaged and momentum is positive.
 """
 
-        self._next_step(
+        self._step(
             reasoning,
             "LLM daily digest generated",
             output_data={"word_count": len(digest.split()), "fallback": llm_fallback},
@@ -628,12 +584,21 @@ Team collaboration remains strong. Engineers are engaged and momentum is positiv
         validation = self._validate_digest_quality(digest)
         sections   = self._extract_sections(digest)
 
-        # FIX: "post_to_gitlab_wiki" → "post_to_github_comment"
+        # Check content lines only — skip Markdown headings to avoid false positives
+        # (the fallback template includes "## ⚠️ Blockers" heading with "None identified")
         auto_actions = ["send_to_slack", "post_to_github_comment"]
-        if "blocker" in digest.lower():
+        blocker_content_lines = [
+            line for line in digest.splitlines()
+            if "blocker" in line.lower() and not line.strip().startswith("#")
+        ]
+        has_real_blockers = any(
+            "none" not in line.lower()
+            for line in blocker_content_lines
+        )
+        if has_real_blockers:
             auto_actions.append("notify_pm")
 
-        self._next_step(
+        self._step(
             reasoning,
             "Daily digest complete",
             output_data={"quality_state": validation.quality_state, "auto_actions": auto_actions},
@@ -652,11 +617,11 @@ Team collaboration remains strong. Engineers are engaged and momentum is positiv
             "validation":  asdict(validation),
             "quality_state": validation.quality_state,
             "automated_actions": {
-                "actions": auto_actions,
+                "actions":          auto_actions,
                 "escalation_level": "pm" if "notify_pm" in auto_actions else "team",
             },
             "fallback_used": llm_fallback,
-            "reasoning":   reasoning,
+            "reasoning":     normalize_reasoning(reasoning),
             "metadata": {
                 "agent":             self.name,
                 "auth0_token_vault": False,
@@ -666,13 +631,14 @@ Team collaboration remains strong. Engineers are engaged and momentum is positiv
 
     # ── MCP Tool: validate_digest ─────────────────────────────────────────────
 
-    @log_method
     @metric_counter("digest")
+    @log_method
     async def validate_digest(self, digest: str) -> Dict[str, Any]:
         """Standalone quality check for any digest text."""
-        reasoning: List[ReasoningStep] = []
+        from shared.models import ReasoningStep  # type hint only
+        reasoning: list[ReasoningStep] = []
 
-        self._next_step(
+        self._step(
             reasoning,
             "Digest validation requested",
             input_data={"digest_length": len(digest)},
@@ -680,7 +646,7 @@ Team collaboration remains strong. Engineers are engaged and momentum is positiv
 
         validation = self._validate_digest_quality(digest)
 
-        self._next_step(
+        self._step(
             reasoning,
             "Validation completed",
             output_data={**asdict(validation), "quality_state": validation.quality_state},
@@ -694,19 +660,20 @@ Team collaboration remains strong. Engineers are engaged and momentum is positiv
                 and validation.confidence > 0.6
                 and validation.has_summary
             ),
-            "reasoning":  reasoning,
+            "reasoning":  normalize_reasoning(reasoning),
             "timestamp":  datetime.now().isoformat(),
         }
 
     # ── MCP Tool: extract_key_points ──────────────────────────────────────────
 
-    @log_method
     @metric_counter("digest")
+    @log_method
     async def extract_key_points(self, digest: str) -> Dict[str, Any]:
         """Extract structured sections from any digest text."""
-        reasoning: List[ReasoningStep] = []
+        from shared.models import ReasoningStep  # type hint only
+        reasoning: list[ReasoningStep] = []
 
-        self._next_step(
+        self._step(
             reasoning,
             "Key points extraction requested",
             input_data={"digest_length": len(digest)},
@@ -722,7 +689,7 @@ Team collaboration remains strong. Engineers are engaged and momentum is positiv
         else:
             method = "fallback_full_text"
 
-        self._next_step(
+        self._step(
             reasoning,
             "Extraction complete",
             output_data={
@@ -740,33 +707,6 @@ Team collaboration remains strong. Engineers are engaged and momentum is positiv
             "quality_state":     validation.quality_state,
             "extraction_method": method,
             "confidence":        validation.confidence,
-            "reasoning":         reasoning,
+            "reasoning":         normalize_reasoning(reasoning),
             "timestamp":         datetime.now().isoformat(),
         }
-
-
-# ── Health check ──────────────────────────────────────────────────────────────
-
-def get_agent_status() -> Dict[str, Any]:
-    return {
-        "agent_name":  "digest",
-        "status":      "HEALTHY",
-        "capabilities": [
-            "generate_digest",      # PRIMARY — called by Orchestrator
-            "daily_digest",
-            "validate_digest",
-            "extract_key_points",
-        ],
-        "features": [
-            "structured_pipeline_summary",
-            "slack_message_builder",
-            "github_pr_report",
-            "quality_validation",
-            "llm_fallback",
-            "markdown_formatting",
-        ],
-        "auth0_token_vault": False,  # explicit: Digest does NOT use Token Vault
-        "agent_type":  "autonomous",
-        "llm_powered": True,
-        "timestamp":   datetime.now().isoformat(),
-    }
