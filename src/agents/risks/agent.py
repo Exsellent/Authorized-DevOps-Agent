@@ -14,38 +14,27 @@ Consumed by:
   - Progress Agent (risk_level for escalation logic)
   - Digest Agent (executive_summary for the final report)
 
-Changes vs. original GitLab version:
-  - All GitLab references removed from prompts, docstrings, metadata
-  - NEW params: classification, file_tree, repo, issue_number
-  - CRITICAL BUG FIX: LLM success path was silently falling back to
-    baseline (line: detected_risks = self._get_baseline_risks(...)
-    inside the 'else' branch after a valid LLM response)
-  - LLM prompt now asks for JSON → _parse_llm_risks() parses it
-  - issues_found: List[Dict] added to return value (Orchestrator reads it)
-  - _get_baseline_risks: added GitHub-specific patterns
-    (github_actions, dependency, branch, workflow, pr)
-  - log_method: added @wraps
-  - logger.extra= dicts removed (breaks some log handlers)
-  - platform / gitlab_integration removed from metadata and health check
-  - auth0_token_vault: False explicit in health check
-  - NEW TOOL: validate_patch_security — post-generation security gate
-    (Phase 2 of dual-pass risk analysis: planning risk → code risk)
-  - NEW: _calculate_risk_score() → numeric risk_score in all responses
 """
 
+import base64
 import json
 import logging
 import re
 from dataclasses import dataclass, asdict
 from datetime import datetime
 from enum import Enum
-from functools import wraps
 from typing import Any, Dict, List, Optional
 
 from shared.llm_client import LLMClient
 from shared.mcp_base import MCPAgent
 from shared.metrics import metric_counter
-from shared.models import ReasoningStep
+from shared.utils import (
+    is_invalid_response,
+    log_method,
+    next_step,
+    normalize_reasoning,
+    sanitize_user_input,
+)
 
 logger = logging.getLogger("risks_agent")
 
@@ -53,76 +42,60 @@ logger = logging.getLogger("risks_agent")
 # ── Enums ─────────────────────────────────────────────────────────────────────
 
 class RiskAnalysisMode(Enum):
-    LLM      = "llm"
+    LLM = "llm"
     BASELINE = "baseline"
-    HYBRID   = "hybrid"
+    HYBRID = "hybrid"
 
 
 class RiskSeverity(Enum):
     CRITICAL = "critical"
-    HIGH     = "high"
-    MEDIUM   = "medium"
-    LOW      = "low"
-    INFO     = "info"
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+    INFO = "info"
 
 
 class RiskCategory(Enum):
-    SECURITY         = "security"
-    DESIGN_RISK      = "design_risk"
-    BUSINESS_IMPACT  = "business_impact"
-    TECHNICAL_DEBT   = "technical_debt"
+    SECURITY = "security"
+    DESIGN_RISK = "design_risk"
+    BUSINESS_IMPACT = "business_impact"
+    TECHNICAL_DEBT = "technical_debt"
     INTEGRATION_RISK = "integration_risk"
-    SCALABILITY      = "scalability"
-    COMPLIANCE       = "compliance"
-    OPERATIONAL      = "operational"
+    SCALABILITY = "scalability"
+    COMPLIANCE = "compliance"
+    OPERATIONAL = "operational"
 
 
 # ── Data models ───────────────────────────────────────────────────────────────
 
 @dataclass
 class RiskItem:
-    risk_id:             str
-    title:               str
-    category:            str
-    severity:            str
-    description:         str
-    likelihood:          str   # "high" | "medium" | "low"
-    potential_impact:    str
+    risk_id: str
+    title: str
+    category: str
+    severity: str
+    description: str
+    likelihood: str  # "high" | "medium" | "low"
+    potential_impact: str
     mitigation_strategy: str
-    priority:            int   # 1–5, lower = more urgent
-    timeline:            str
-    source:              str = "baseline"   # "baseline" | "llm" | "hybrid"
+    priority: int  # 1–5, lower = more urgent
+    timeline: str
+    source: str = "baseline"  # "baseline" | "llm" | "hybrid"
 
 
 @dataclass
 class ExecutiveRiskSummary:
-    overall_risk_level:      str
-    total_risks:             int
-    critical_count:          int
-    high_count:              int
-    medium_count:            int
-    low_count:               int
-    top_concerns:            List[str]
-    mitigation_priorities:   List[str]
+    overall_risk_level: str
+    total_risks: int
+    critical_count: int
+    high_count: int
+    medium_count: int
+    low_count: int
+    top_concerns: List[str]
+    mitigation_priorities: List[str]
     go_no_go_recommendation: str
-    confidence_level:        str
-    timestamp:               str
-
-
-# ── Decorator ─────────────────────────────────────────────────────────────────
-
-def log_method(func):
-    @wraps(func)
-    async def wrapper(self, *args, **kwargs):
-        logger.info("%s called", func.__name__)
-        try:
-            result = await func(self, *args, **kwargs)
-            logger.info("%s completed", func.__name__)
-            return result
-        except Exception as exc:
-            logger.error("%s failed: %s", func.__name__, exc)
-            raise
-    return wrapper
+    confidence_level: str
+    timestamp: str
 
 
 # ── Agent ─────────────────────────────────────────────────────────────────────
@@ -149,8 +122,8 @@ class RisksAgent(MCPAgent):
         super().__init__("Risks")
         self.llm = LLMClient()
 
-        self.register_tool("analyze_risks",           self.analyze_risks)
-        self.register_tool("assess_feature_risk",     self.assess_feature_risk)
+        self.register_tool("analyze_risks", self.analyze_risks)
+        self.register_tool("assess_feature_risk", self.assess_feature_risk)
         self.register_tool("validate_patch_security", self.validate_patch_security)
 
         logger.info(
@@ -161,39 +134,23 @@ class RisksAgent(MCPAgent):
     # Internal helpers
     # ─────────────────────────────────────────────────────────────────────────
 
-    def _next_step(
-        self,
-        reasoning:   List[ReasoningStep],
-        description: str,
-        input_data:  Optional[Dict] = None,
-        output_data: Optional[Dict] = None,
+    def _step(
+            self,
+            reasoning: list,
+            description: str,
+            input_data: Optional[Dict] = None,
+            output_data: Optional[Dict] = None,
     ) -> None:
-        reasoning.append(ReasoningStep(
-            step_number=len(reasoning) + 1,
-            description=description,
-            timestamp=datetime.now().isoformat(),
-            input_data=input_data or {},
-            output=output_data or {},
-            agent=self.name,
-        ))
-
-    def _is_invalid_response(self, response: str) -> bool:
-        lower = response.lower()
-        bad = [
-            "[stub]", "[llm error]", "[claude error]",
-            "unauthorized", "401", "client error",
-            "connection error", "timeout",
-        ]
-        return any(b in lower for b in bad)
+        next_step(reasoning, description, self.name, input_data, output_data)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Baseline risk rules (deterministic fallback)
     # ─────────────────────────────────────────────────────────────────────────
 
     def _get_baseline_risks(
-        self,
-        feature:      str,
-        issue_number: Optional[int] = None,
+            self,
+            feature: str,
+            issue_number: Optional[int] = None,
     ) -> List[RiskItem]:
         """
         Pattern-based risk detection — used when LLM is unavailable or fails.
@@ -345,23 +302,20 @@ class RisksAgent(MCPAgent):
     # ─────────────────────────────────────────────────────────────────────────
 
     def _parse_llm_risks(
-        self,
-        llm_text: str,
-        feature:  str,
+            self,
+            llm_text: str,
+            feature: str,
     ) -> Optional[List[RiskItem]]:
         """
         Parse LLM JSON response into RiskItem list.
 
-        BUG FIX: The original code fell through to _get_baseline_risks()
-        even when the LLM returned a valid response. This method is the
-        actual parser that was missing.
         """
         try:
             cleaned = re.sub(r"```(?:json)?\s*|\s*```", "", llm_text).strip()
             first, last = cleaned.find("{"), cleaned.rfind("}")
             if first == -1 or last == -1:
                 return None
-            cleaned = cleaned[first : last + 1]
+            cleaned = cleaned[first: last + 1]
             cleaned = re.sub(r",\s*([}\]])", r"\1", cleaned)
 
             data = json.loads(cleaned)
@@ -382,6 +336,12 @@ class RisksAgent(MCPAgent):
                 if category not in self._VALID_CATEGORIES:
                     category = "operational"
 
+                # Safely parse priority (protect against non‑integer values)
+                try:
+                    priority = int(r.get("priority", 3))
+                except (ValueError, TypeError):
+                    priority = 3
+
                 items.append(RiskItem(
                     risk_id=r.get("risk_id", f"LLM-{i:03d}"),
                     title=str(r.get("title", f"Risk {i}"))[:100],
@@ -391,7 +351,7 @@ class RisksAgent(MCPAgent):
                     description=str(r.get("description", ""))[:500],
                     potential_impact=str(r.get("potential_impact", ""))[:300],
                     mitigation_strategy=str(r.get("mitigation_strategy", ""))[:400],
-                    priority=int(r.get("priority", 3)),
+                    priority=priority,
                     timeline=str(r.get("timeline", "During development"))[:100],
                     source="llm",
                 ))
@@ -411,10 +371,10 @@ class RisksAgent(MCPAgent):
             return RiskSeverity.LOW.value
         weights = {
             RiskSeverity.CRITICAL.value: 4,
-            RiskSeverity.HIGH.value:     3,
-            RiskSeverity.MEDIUM.value:   2,
-            RiskSeverity.LOW.value:      1,
-            RiskSeverity.INFO.value:     0,
+            RiskSeverity.HIGH.value: 3,
+            RiskSeverity.MEDIUM.value: 2,
+            RiskSeverity.LOW.value: 1,
+            RiskSeverity.INFO.value: 0,
         }
         avg = sum(weights.get(r.severity, 0) for r in risks) / len(risks)
         if avg >= 3.5:
@@ -432,9 +392,9 @@ class RisksAgent(MCPAgent):
         """
         weights = {
             RiskSeverity.CRITICAL.value: 5,
-            RiskSeverity.HIGH.value:     3,
-            RiskSeverity.MEDIUM.value:   2,
-            RiskSeverity.LOW.value:      1,
+            RiskSeverity.HIGH.value: 3,
+            RiskSeverity.MEDIUM.value: 2,
+            RiskSeverity.LOW.value: 1,
         }
         return sum(weights.get(r.severity, 0) for r in risks)
 
@@ -442,14 +402,15 @@ class RisksAgent(MCPAgent):
         """
         Flat list consumed by Orchestrator: risks_result.get("issues_found", [])
         Sorted by priority ascending (most urgent first).
+        Severity is returned in UPPERCASE to match orchestrator expectations.
         """
         return [
             {
-                "title":               r.title,
-                "severity":            r.severity,
-                "category":            r.category,
+                "title": r.title,
+                "severity": r.severity.upper(),   # ← UPPERCASE for orchestrator
+                "category": r.category,
                 "mitigation_strategy": r.mitigation_strategy,
-                "priority":            r.priority,
+                "priority": r.priority,
             }
             for r in sorted(risks, key=lambda x: x.priority)
         ]
@@ -458,17 +419,17 @@ class RisksAgent(MCPAgent):
     # MCP Tool: analyze_risks
     # ─────────────────────────────────────────────────────────────────────────
 
-    @log_method
     @metric_counter("risks")
+    @log_method
     async def analyze_risks(
-        self,
-        feature:        str,
-        issue_number:   Optional[int]       = None,
-        title:          Optional[str]       = None,
-        context:        Optional[str]       = None,
-        classification: Optional[Dict]      = None,
-        file_tree:      Optional[List[str]] = None,
-        repo:           Optional[str]       = None,
+            self,
+            feature: str,
+            issue_number: Optional[int] = None,
+            title: Optional[str] = None,
+            context: Optional[str] = None,
+            classification: Optional[Dict] = None,
+            file_tree: Optional[List[str]] = None,
+            repo: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Full proactive risk assessment pipeline (Phase 1 — planning).
@@ -482,28 +443,36 @@ class RisksAgent(MCPAgent):
             file_tree:      Repo file names from Orchestrator (for context).
             repo:           "owner/repo" string.
         """
-        reasoning:     List[ReasoningStep] = []
-        analysis_mode: RiskAnalysisMode    = RiskAnalysisMode.LLM
+        from shared.models import ReasoningStep  # type hint only
+        reasoning: list[ReasoningStep] = []
+        analysis_mode = RiskAnalysisMode.LLM
 
-        issue_ref  = (
-            f"#{issue_number}: {title}"
-            if issue_number is not None and title
+        # Sanitize user-provided inputs
+        safe_feature = sanitize_user_input(feature)
+        safe_context = sanitize_user_input(context) if context else None
+        safe_repo = sanitize_user_input(repo) if repo else None
+        safe_title = sanitize_user_input(title) if title else None
+
+        issue_ref = (
+            f"#{issue_number}: {safe_title}"
+            if issue_number is not None and safe_title
             else "external feature request"
         )
-        repo_line  = f"Repository: {repo}" if repo else ""
-        tree_line  = "Key files: " + ", ".join(file_tree[:20]) if file_tree else ""
-        task_type  = (classification or {}).get("task_type",  "unknown")
+
+        repo_line = f"Repository: {safe_repo}" if safe_repo else ""
+        tree_line = "Key files: " + ", ".join(file_tree[:20]) if file_tree else ""
+        task_type = (classification or {}).get("task_type", "unknown")
         complexity = (classification or {}).get("complexity", "medium")
 
         # ── Step 1: Intake ────────────────────────────────────────────────────
-        self._next_step(
+        self._step(
             reasoning,
             "Proactive risk assessment requested",
             input_data={
-                "feature":    feature,
-                "issue_ref":  issue_ref,
-                "repo":       repo,
-                "task_type":  task_type,
+                "feature": safe_feature[:100],
+                "issue_ref": issue_ref,
+                "repo": safe_repo,
+                "task_type": task_type,
                 "file_count": len(file_tree) if file_tree else 0,
             },
         )
@@ -520,9 +489,9 @@ PLANNER CLASSIFICATION:
 - Complexity: {complexity}
 
 FEATURE / GOAL TO ASSESS:
-{feature}
+{safe_feature}
 
-PROJECT CONTEXT: {context or "GitHub repository — security and DevOps automation"}
+PROJECT CONTEXT: {safe_context or "GitHub repository — security and DevOps automation"}
 
 Identify 3–6 PLANNING-PHASE risks before any code is written.
 Focus on: design decisions, security gaps, integration fragility, scalability,
@@ -561,7 +530,7 @@ Return ONLY valid JSON (no markdown, no extra text):
 }}
 """
 
-        self._next_step(
+        self._step(
             reasoning,
             "Risk assessment prompt generated",
             output_data={"prompt_length": len(prompt), "mode": "proactive_planning"},
@@ -573,48 +542,45 @@ Return ONLY valid JSON (no markdown, no extra text):
         try:
             llm_text = await self.llm.chat(prompt)
 
-            if self._is_invalid_response(llm_text):
-                analysis_mode  = RiskAnalysisMode.BASELINE
-                detected_risks = self._get_baseline_risks(feature, issue_number)
-                self._next_step(
+            if is_invalid_response(llm_text):
+                analysis_mode = RiskAnalysisMode.BASELINE
+                detected_risks = self._get_baseline_risks(safe_feature, issue_number)
+                self._step(
                     reasoning,
                     "LLM unavailable — using baseline risk model",
                     output_data={"risks_detected": len(detected_risks)},
                 )
             else:
-                # BUG FIX: actually parse the LLM JSON instead of silently
-                # falling back to baseline (original always called
-                # _get_baseline_risks() here regardless of LLM success)
-                parsed = self._parse_llm_risks(llm_text, feature)
+                parsed = self._parse_llm_risks(llm_text, safe_feature)
 
                 if parsed:
                     detected_risks = parsed
-                    analysis_mode  = RiskAnalysisMode.LLM
-                    self._next_step(
+                    analysis_mode = RiskAnalysisMode.LLM
+                    self._step(
                         reasoning,
                         "LLM risk analysis parsed successfully",
                         output_data={
                             "risks_detected": len(detected_risks),
-                            "analysis_mode":  analysis_mode.value,
+                            "analysis_mode": analysis_mode.value,
                         },
                     )
                 else:
-                    detected_risks = self._get_baseline_risks(feature, issue_number)
-                    analysis_mode  = RiskAnalysisMode.HYBRID
-                    self._next_step(
+                    detected_risks = self._get_baseline_risks(safe_feature, issue_number)
+                    analysis_mode = RiskAnalysisMode.HYBRID
+                    self._step(
                         reasoning,
                         "LLM response not parseable — using baseline (hybrid mode)",
                         output_data={
                             "risks_detected": len(detected_risks),
-                            "analysis_mode":  analysis_mode.value,
+                            "analysis_mode": analysis_mode.value,
                         },
                     )
 
         except Exception as exc:
             logger.error("Risk analysis failed: %s", exc)
-            analysis_mode  = RiskAnalysisMode.BASELINE
-            detected_risks = self._get_baseline_risks(feature, issue_number)
-            self._next_step(
+            analysis_mode = RiskAnalysisMode.BASELINE
+            detected_risks = self._get_baseline_risks(safe_feature, issue_number)
+            self._step(
                 reasoning,
                 f"LLM call failed — using baseline: {exc}",
                 output_data={"analysis_mode": analysis_mode.value},
@@ -622,32 +588,33 @@ Return ONLY valid JSON (no markdown, no extra text):
 
         # ── Step 4: Scoring and actions ───────────────────────────────────────
         overall_risk = self._calculate_overall_risk(detected_risks)
-        risk_score   = self._calculate_risk_score(detected_risks)
+        overall_risk = overall_risk.upper()
+        risk_score = self._calculate_risk_score(detected_risks)
 
         # Bump overall risk if Planner flagged high complexity
-        if complexity == "high" and overall_risk == RiskSeverity.MEDIUM.value:
-            overall_risk = RiskSeverity.HIGH.value
+        if complexity == "high" and overall_risk == "MEDIUM":
+            overall_risk = "HIGH"
 
-        if overall_risk == RiskSeverity.CRITICAL.value:
+        if overall_risk == "CRITICAL":
             auto_actions = ["block_pr", "require_architecture_review", "notify_leadership"]
-            priority     = "P0"
-        elif overall_risk == RiskSeverity.HIGH.value:
+            priority = "P0"
+        elif overall_risk == "HIGH":
             auto_actions = ["require_senior_review", "require_security_review", "notify_pm"]
-            priority     = "P1"
-        elif overall_risk == RiskSeverity.MEDIUM.value:
+            priority = "P1"
+        elif overall_risk == "MEDIUM":
             auto_actions = ["add_extra_testing", "request_design_review"]
-            priority     = "P2"
+            priority = "P2"
         else:
             auto_actions = ["standard_development"]
-            priority     = "P3"
+            priority = "P3"
 
-        self._next_step(
+        self._step(
             reasoning,
             "Overall risk scored and actions determined",
             output_data={
                 "overall_risk": overall_risk,
-                "risk_score":   risk_score,
-                "priority":     priority,
+                "risk_score": risk_score,
+                "priority": priority,
                 "auto_actions": auto_actions,
             },
         )
@@ -656,24 +623,24 @@ Return ONLY valid JSON (no markdown, no extra text):
         critical_count = sum(
             1 for r in detected_risks if r.severity == RiskSeverity.CRITICAL.value
         )
-        high_count   = sum(
+        high_count = sum(
             1 for r in detected_risks if r.severity == RiskSeverity.HIGH.value
         )
         medium_count = sum(
             1 for r in detected_risks if r.severity == RiskSeverity.MEDIUM.value
         )
-        low_count    = sum(
+        low_count = sum(
             1 for r in detected_risks if r.severity == RiskSeverity.LOW.value
         )
 
-        top_concerns          = [r.title for r in detected_risks[:3]]
+        top_concerns = [r.title for r in detected_risks[:3]]
         mitigation_priorities = [r.mitigation_strategy for r in detected_risks[:3]]
 
-        if overall_risk == RiskSeverity.CRITICAL.value:
+        if overall_risk == "CRITICAL":
             go_no_go = (
                 "NO-GO: Requires risk mitigation and architecture review before proceeding"
             )
-        elif overall_risk == RiskSeverity.HIGH.value:
+        elif overall_risk == "HIGH":
             go_no_go = (
                 "CONDITIONAL: Proceed with senior oversight and a documented mitigation plan"
             )
@@ -692,39 +659,37 @@ Return ONLY valid JSON (no markdown, no extra text):
             top_concerns=top_concerns,
             mitigation_priorities=mitigation_priorities,
             go_no_go_recommendation=go_no_go,
-            confidence_level=(
-                "high" if analysis_mode == RiskAnalysisMode.LLM else "medium"
-            ),
+            confidence_level="medium",
             timestamp=datetime.now().isoformat(),
         )
 
-        self._next_step(
+        self._step(
             reasoning,
             "Risk assessment complete",
             output_data={
-                "overall_risk":  overall_risk,
-                "risk_score":    risk_score,
-                "total_risks":   len(detected_risks),
-                "go_no_go":      go_no_go,
+                "overall_risk": overall_risk,
+                "risk_score": risk_score,
+                "total_risks": len(detected_risks),
+                "go_no_go": go_no_go,
                 "analysis_mode": analysis_mode.value,
             },
         )
 
         logger.info(
             "Risk assessment done — feature=%s overall=%s priority=%s score=%d mode=%s",
-            feature[:50], overall_risk, priority, risk_score, analysis_mode.value,
+            safe_feature[:50], overall_risk, priority, risk_score, analysis_mode.value,
         )
 
         return {
-            "feature":       feature,
-            "repo":          repo,
-            "issue_ref":     issue_ref,
+            "feature": safe_feature,
+            "repo": safe_repo,
+            "issue_ref": issue_ref,
             "analysis_mode": analysis_mode.value,
 
             # ── Fields read by Orchestrator ───────────────────────────────────
             "overall_risk_level": overall_risk,
-            "priority":           priority,
-            "risk_score":         risk_score,
+            "priority": priority,
+            "risk_score": risk_score,
 
             # flat list consumed by Orchestrator + Code Execution
             "issues_found": self._issues_found_list(detected_risks),
@@ -737,21 +702,19 @@ Return ONLY valid JSON (no markdown, no extra text):
 
             # actions for Orchestrator / Progress Agent
             "automated_actions": {
-                "actions":        auto_actions,
-                "priority":       priority,
-                "block_pr":       overall_risk == RiskSeverity.CRITICAL.value,
-                "require_review": overall_risk in (
-                    RiskSeverity.CRITICAL.value, RiskSeverity.HIGH.value
-                ),
+                "actions": auto_actions,
+                "priority": priority,
+                "block_pr": overall_risk == "CRITICAL",
+                "require_review": overall_risk in ("CRITICAL", "HIGH"),
             },
 
-            "reasoning": reasoning,
+            "reasoning": normalize_reasoning(reasoning),
             "metadata": {
-                "agent":            self.name,
-                "focus":            "proactive_planning_risks",
-                "analysis_mode":    analysis_mode.value,
+                "agent": self.name,
+                "focus": "proactive_planning_risks",
+                "analysis_mode": analysis_mode.value,
                 "auth0_token_vault": False,
-                "timestamp":        datetime.now().isoformat(),
+                "timestamp": datetime.now().isoformat(),
             },
         }
 
@@ -759,67 +722,72 @@ Return ONLY valid JSON (no markdown, no extra text):
     # MCP Tool: assess_feature_risk (lightweight baseline-only triage)
     # ─────────────────────────────────────────────────────────────────────────
 
-    @log_method
     @metric_counter("risks")
+    @log_method
     async def assess_feature_risk(
-        self,
-        feature:    str,
-        complexity: str           = "medium",
-        repo:       Optional[str] = None,
+            self,
+            feature: str,
+            complexity: str = "medium",
+            repo: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Quick baseline-only risk assessment for fast triage.
         Does not call the LLM — suitable for high-volume batch processing.
         """
-        reasoning: List[ReasoningStep] = []
+        from shared.models import ReasoningStep  # type hint only
+        reasoning: list[ReasoningStep] = []
 
-        self._next_step(
+        safe_feature = sanitize_user_input(feature)
+
+        self._step(
             reasoning,
             "Quick feature risk assessment (baseline only)",
-            input_data={"feature": feature, "complexity": complexity, "repo": repo},
+            input_data={"feature": safe_feature[:100], "complexity": complexity, "repo": repo},
         )
 
-        risks        = self._get_baseline_risks(feature)
+        risks = self._get_baseline_risks(safe_feature)
         overall_risk = self._calculate_overall_risk(risks)
-        risk_score   = self._calculate_risk_score(risks)
+        risk_score = self._calculate_risk_score(risks)
 
         if complexity == "high" and overall_risk == RiskSeverity.MEDIUM.value:
             overall_risk = RiskSeverity.HIGH.value
         elif complexity == "low" and overall_risk == RiskSeverity.MEDIUM.value:
             overall_risk = RiskSeverity.LOW.value
 
-        self._next_step(
+        overall_risk = overall_risk.upper()
+
+        self._step(
             reasoning,
             "Quick assessment completed",
             output_data={
                 "overall_risk": overall_risk,
-                "risks_count":  len(risks),
-                "risk_score":   risk_score,
+                "risks_count": len(risks),
+                "risk_score": risk_score,
             },
         )
 
         return {
-            "feature":      feature,
-            "repo":         repo,
-            "complexity":   complexity,
+            "feature": safe_feature,
+            "repo": repo,
+            "complexity": complexity,
             "overall_risk": overall_risk,
-            "risks_count":  len(risks),
-            "risk_score":   risk_score,
+            "risks_count": len(risks),
+            "risk_score": risk_score,
             "issues_found": self._issues_found_list(risks),
-            "reasoning":    reasoning,
-            "timestamp":    datetime.now().isoformat(),
+            "reasoning": normalize_reasoning(reasoning),
+            "timestamp": datetime.now().isoformat(),
         }
 
     # ─────────────────────────────────────────────────────────────────────────
     # MCP Tool: validate_patch_security (post-generation security gate)
     # ─────────────────────────────────────────────────────────────────────────
 
-    @log_method
     @metric_counter("risks")
+    @log_method
     async def validate_patch_security(
-        self,
-        patch_files: List[Dict],
-        repo:        Optional[str] = None,
+            self,
+            patch_files: List[Dict],
+            repo: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Post-generation security gate — Phase 2 of dual-pass risk analysis.
@@ -831,27 +799,28 @@ Return ONLY valid JSON (no markdown, no extra text):
         Blocking policy  (security_passed=False): any critical violation.
         Warning policy   (security_passed=True):  high/medium violations reported.
         """
-        reasoning:  List[ReasoningStep] = []
-        violations: List[Dict]          = []
+        from shared.models import ReasoningStep  # type hint only
+        reasoning: list[ReasoningStep] = []
+        violations: List[Dict] = []
 
         FORBIDDEN = [
-            ("eval(",                       "code_injection",  "critical"),
-            ("exec(",                       "code_injection",  "critical"),
-            ("__import__(",                 "dynamic_import",  "high"),
-            ("os.system(",                  "shell_injection",  "critical"),
-            ("subprocess.Popen(shell=True", "shell_injection",  "high"),
-            ("pickle.loads(",               "deserialization",  "high"),
-            ("marshal.loads(",              "deserialization",  "high"),
-            ("password =",                  "secret_exposure",  "high"),
-            ("secret =",                    "secret_exposure",  "high"),
-            ("api_key =",                   "secret_exposure",  "high"),
-            ("curl http",                   "network_egress",   "medium"),
-            ("wget http",                   "network_egress",   "medium"),
+            ("eval(", "code_injection", "critical"),
+            ("exec(", "code_injection", "critical"),
+            ("__import__(", "dynamic_import", "high"),
+            ("os.system(", "shell_injection", "critical"),
+            ("subprocess.Popen(shell=True", "shell_injection", "high"),
+            ("pickle.loads(", "deserialization", "high"),
+            ("marshal.loads(", "deserialization", "high"),
+            ("password =", "secret_exposure", "high"),
+            ("secret =", "secret_exposure", "high"),
+            ("api_key =", "secret_exposure", "high"),
+            ("curl http", "network_egress", "medium"),
+            ("wget http", "network_egress", "medium"),
         ]
 
         SEVERITY_SCORE = {"critical": 5, "high": 3, "medium": 1}
 
-        self._next_step(
+        self._step(
             reasoning,
             "Post-patch security gate: scanning generated files",
             input_data={"patch_files_count": len(patch_files), "repo": repo},
@@ -859,13 +828,22 @@ Return ONLY valid JSON (no markdown, no extra text):
 
         risk_score = 0
         for pf in patch_files:
-            content = str(pf.get("content", "") or "")
-            path    = pf.get("path", "unknown")
+            # The orchestrator sends content_base64 (base64-encoded file content)
+            encoded = pf.get("content_base64")
+            if not encoded or not isinstance(encoded, str):
+                # Fallback for compatibility (if raw content ever provided)
+                encoded = pf.get("content", "")
+            try:
+                content = base64.b64decode(encoded).decode("utf-8", errors="replace")
+            except Exception:
+                content = ""   # treat as empty if decoding fails
+
+            path = pf.get("path", "unknown")
             for pattern, category, severity in FORBIDDEN:
                 if pattern.lower() in content.lower():
                     violations.append({
-                        "file":     path,
-                        "pattern":  pattern,
+                        "file": path,
+                        "pattern": pattern,
                         "category": category,
                         "severity": severity,
                     })
@@ -876,23 +854,23 @@ Return ONLY valid JSON (no markdown, no extra text):
         )
 
         critical_count = sum(1 for v in violations if v["severity"] == "critical")
-        high_count     = sum(1 for v in violations if v["severity"] == "high")
-        medium_count   = sum(1 for v in violations if v["severity"] == "medium")
+        high_count = sum(1 for v in violations if v["severity"] == "high")
+        medium_count = sum(1 for v in violations if v["severity"] == "medium")
 
-        self._next_step(
+        self._step(
             reasoning,
             (
-                "Patch security gate "
-                + ("✓ PASSED" if security_passed
-                   else "✗ BLOCKED — critical violations found")
+                    "Patch security gate "
+                    + ("✓ PASSED" if security_passed
+                       else "✗ BLOCKED — critical violations found")
             ),
             output_data={
-                "security_passed":  security_passed,
+                "security_passed": security_passed,
                 "violations_count": len(violations),
-                "risk_score":       risk_score,
-                "critical":         critical_count,
-                "high":             high_count,
-                "medium":           medium_count,
+                "risk_score": risk_score,
+                "critical": critical_count,
+                "high": high_count,
+                "medium": medium_count,
             },
         )
 
@@ -903,51 +881,18 @@ Return ONLY valid JSON (no markdown, no extra text):
         )
 
         return {
-            "security_passed":  security_passed,
-            "violations":       violations,
+            "security_passed": security_passed,
+            "violations": violations,
             "violations_count": len(violations),
-            "critical_count":   critical_count,
-            "high_count":       high_count,
-            "medium_count":     medium_count,
-            "risk_score":       risk_score,
-            "policy":           "patch_security_policy_v1",
-            "reasoning":        reasoning,
+            "critical_count": critical_count,
+            "high_count": high_count,
+            "medium_count": medium_count,
+            "risk_score": risk_score,
+            "policy": "patch_security_policy_v1",
+            "reasoning": normalize_reasoning(reasoning),
             "metadata": {
-                "agent":             "Risks",
+                "agent": "Risks",
                 "auth0_token_vault": False,
-                "phase":             "post_generation",
+                "phase": "post_generation",
             },
         }
-
-
-# ── Health check (module-level — outside class) ───────────────────────────────
-
-def get_agent_status() -> Dict[str, Any]:
-    return {
-        "agent_name": "risks",
-        "status":     "HEALTHY",
-        "capabilities": [
-            "analyze_risks",
-            "assess_feature_risk",
-            "validate_patch_security",
-        ],
-        "features": [
-            "proactive_risk_assessment",
-            "planning_phase_analysis",
-            "post_generation_security_gate",
-            "dual_pass_pipeline",
-            "llm_json_parsing",
-            "baseline_fallback",
-            "go_no_go_recommendations",
-            "github_specific_patterns",
-            "risk_score_numeric",
-        ],
-        "auth0_token_vault": False,
-        "agent_type":  "autonomous",
-        "llm_powered": True,
-        "focus": (
-            "Dual-pass: pre-implementation planning risk "
-            "+ post-generation patch security"
-        ),
-        "timestamp": datetime.now().isoformat(),
-    }

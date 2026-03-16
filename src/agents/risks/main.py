@@ -7,11 +7,13 @@ app = agent.app
 @app.get("/")
 async def root():
     return {
-        "message": "Authorized DevOps Agent is running!",
+        "message": "Risks Agent is running!",
         "agent": agent.name,
         "available_tools": list(agent.tools.keys()),
         "docs": "/docs"
     }
+
+
 if __name__ == "__main__":
     import uvicorn
 
