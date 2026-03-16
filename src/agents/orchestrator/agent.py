@@ -10,19 +10,12 @@ Responsibilities:
   5. Post summary to Slack (optional)
   6. Return full reasoning trail to UI
 
-Ports (docker-compose):
-  Orchestrator  : 8600
-  Planner       : 8601
-  Risks         : 8603
-  Code Execution: 8605
-  Progress      : 8602
-  Digest        : 8604
 """
 
 import logging
 import os
 import secrets
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -31,6 +24,7 @@ from shared.auth0_token_vault import Auth0TokenVault, TokenVaultError, VaultToke
 from shared.mcp_base import MCPAgent
 from shared.metrics import metric_counter
 from shared.models import ReasoningStep
+from shared.utils import log_method, normalize_reasoning
 
 logger = logging.getLogger("orchestrator")
 
@@ -41,8 +35,16 @@ _SENSITIVE = frozenset({
 })
 
 
-def _safe(data: dict) -> dict:
-    return {k: "***REDACTED***" if k in _SENSITIVE else v for k, v in data.items()}
+def _safe_deep(data: Any) -> Any:
+    """Recursively redact sensitive fields in nested dicts/lists (logging only)."""
+    if isinstance(data, dict):
+        return {
+            k: "***REDACTED***" if k in _SENSITIVE else _safe_deep(v)
+            for k, v in data.items()
+        }
+    if isinstance(data, list):
+        return [_safe_deep(item) for item in data]
+    return data
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -51,7 +53,7 @@ def _safe(data: dict) -> dict:
 
 class GitHubClient:
     """
-    Minimal async GitHub API client.
+    The async GitHub API client.
     The token is passed per-call and never stored as an instance attribute,
     ensuring it lives only for the duration of a single request.
     """
@@ -287,9 +289,9 @@ class OrchestratorAgent(MCPAgent):
             ReasoningStep(
                 step_number=len(reasoning) + 1,
                 description=description,
-                timestamp=datetime.now().isoformat(),
-                input_data=_safe(input_data or {}),
-                output=_safe(output_data or {}),
+                timestamp=datetime.now(timezone.utc).isoformat(),
+                input_data=_safe_deep(input_data or {}),
+                output=_safe_deep(output_data or {}),
                 agent=self.name,
             )
         )
@@ -301,7 +303,7 @@ class OrchestratorAgent(MCPAgent):
         Invoke a downstream agent via MCP HTTP.
         Sensitive params are redacted in logs but passed in full to the agent.
         """
-        logger.debug("→ %s/%s params=%s", url, tool, _safe(params))
+        logger.debug("→ %s/%s params=%s", url, tool, _safe_deep(params))
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
                 r = await client.post(
@@ -309,15 +311,22 @@ class OrchestratorAgent(MCPAgent):
                     json={"method": f"tools/{tool}", "params": params},
                 )
                 r.raise_for_status()
-                return r.json()
+                result = r.json()
         except Exception as exc:
             logger.error("Agent call failed %s %s: %s", url, tool, exc)
             return {"error": str(exc)}
+
+        # Propagate downstream agent errors as structured dicts
+        if "error" in result and isinstance(result["error"], str):
+            logger.warning("Downstream agent %s/%s returned error: %s",
+                           url, tool, result["error"][:200])
+        return result
 
     # ─────────────────────────────────────────────────────────────────────────
     # MAIN PIPELINE — run_secure_devops_flow
     # ─────────────────────────────────────────────────────────────────────────
 
+    @log_method
     @metric_counter("secure_devops_flow")
     async def run_secure_devops_flow(
         self,
@@ -353,6 +362,13 @@ class OrchestratorAgent(MCPAgent):
         reasoning: List[ReasoningStep] = []
         github_token: Optional[VaultToken] = None
 
+        # Track which agents failed so we can report partial success
+        agent_errors: List[str] = []
+
+        def _check_agent_result(result: Dict, agent_name: str) -> None:
+            if "error" in result and isinstance(result["error"], str):
+                agent_errors.append(f"{agent_name}: {result['error'][:150]}")
+
         # Resolve token: UI field → .env → error
         # Allows token to live in the server environment (not sent by UI every call)
         resolved_refresh = auth0_refresh_token or os.getenv("AUTH0_REFRESH_TOKEN")
@@ -385,10 +401,10 @@ class OrchestratorAgent(MCPAgent):
                 reasoning,
                 "Token Vault: scoped GitHub token obtained successfully",
                 output_data={
-                    "token_type": github_token.token_type,
+                    "token_type": github_token.token_type if github_token else "unknown",
                     "scope": github_token.scope,
                     "token_vault_used": True,
-                    # access_token is NOT included — _safe() would redact anyway
+                    # access_token is NOT included — _safe_deep would redact anyway
                 },
             )
         except TokenVaultError as exc:
@@ -419,7 +435,11 @@ class OrchestratorAgent(MCPAgent):
             )
         except Exception as exc:
             logger.error("GitHub repo read failed: %s", exc)
-            return self._error_response(reasoning, f"GitHub API error: {exc}")
+            return self._error_response(
+                reasoning,
+                f"GitHub API error: {exc}",
+                token_vault_used=True,  # token was successfully obtained
+            )
 
         # ── Step 3: Planner — classify & decompose task ───────────────────────
         self._step(reasoning, "Planner: analysing repository and decomposing goal",
@@ -429,9 +449,11 @@ class OrchestratorAgent(MCPAgent):
             {
                 "description": f"Goal: {goal}. Repository: {repo}.",
                 "context": f"GitHub repo with {len(file_tree)} files. Branch: {base_branch}.",
+                "repo": repo,
                 "file_tree": [f["name"] for f in file_tree[:30]],
             },
         )
+        _check_agent_result(planner_result, "Planner")
         classification = planner_result.get(
             "classification", {"task_type": "security_audit", "complexity": "medium"}
         )
@@ -441,7 +463,7 @@ class OrchestratorAgent(MCPAgent):
             output_data={
                 "task_type": classification.get("task_type"),
                 "complexity": classification.get("complexity"),
-                "plan_steps": planner_result.get("plan_steps", []),
+                "subtasks": planner_result.get("subtasks", []),
             },
         )
 
@@ -453,9 +475,11 @@ class OrchestratorAgent(MCPAgent):
             {
                 "feature": f"{goal} in {repo}",
                 "classification": classification,
+                "repo": repo,
                 "file_tree": [f["name"] for f in file_tree[:30]],
             },
         )
+        _check_agent_result(risks_result, "Risks")
         risk_summary = risks_result.get("executive_summary", {})
         overall_risk = risk_summary.get("overall_risk_level", "MEDIUM")
         issues_found: List[str] = risks_result.get("issues_found", [])
@@ -483,10 +507,10 @@ class OrchestratorAgent(MCPAgent):
                 "risks": issues_found,
                 "classification": classification,
                 "file_tree": [f["name"] for f in file_tree[:30]],
-                # Token passed in-memory to Code Execution agent (never logged)
-                "github_token": github_token.access_token,
+                # github_token is NOT passed — Code Execution does not call GitHub API
             },
         )
+        _check_agent_result(code_result, "Code-Execution")
         code_diff = code_result.get("code_diff", "")
         patch_files: List[Dict] = code_result.get("patch_files", [])
         self._step(
@@ -507,6 +531,7 @@ class OrchestratorAgent(MCPAgent):
                 self.risks_url, "validate_patch_security",
                 {"patch_files": patch_files, "repo": repo},
             )
+            _check_agent_result(sec_check, "Risks (post-patch)")
             sec_passed = sec_check.get("security_passed", True)
             self._step(
                 reasoning,
@@ -519,11 +544,11 @@ class OrchestratorAgent(MCPAgent):
             )
             if not sec_passed:
                 return {
-                    **self._error_response(reasoning, "Security policy blocked PR creation"),
+                    **self._error_response(reasoning, "Security policy blocked PR creation", token_vault_used=True),
                     "status": "security_blocked",
                     "violations": sec_check.get("violations", []),
-                    "token_vault_used": True,
                 }
+
         # ── Step 6: Create GitHub PR (write token — repo scope) ───────────────
         pr_url: Optional[str] = None
         pr_number: Optional[int] = None
@@ -591,6 +616,7 @@ class OrchestratorAgent(MCPAgent):
                 "risk_level": overall_risk,
             },
         )
+        _check_agent_result(progress_result, "Progress")
         self._step(
             reasoning,
             "Progress: metrics collected",
@@ -614,6 +640,7 @@ class OrchestratorAgent(MCPAgent):
                 "progress": progress_result,
             },
         )
+        _check_agent_result(digest_result, "Digest")
         summary_text: str = digest_result.get("summary", self._fallback_summary(
             repo, goal, overall_risk, issues_found, pr_url
         ))
@@ -634,9 +661,11 @@ class OrchestratorAgent(MCPAgent):
             )
 
         # ── Final response (UI contract) ──────────────────────────────────────
+        final_status = "partial" if agent_errors else "success"
+
         return {
-            "status": "success",
-            "reasoning": reasoning,
+            "status": final_status,
+            "reasoning": normalize_reasoning(reasoning),
             "pr_url": pr_url,
             "pr_number": pr_number,
             "issues_found": issues_found,
@@ -645,13 +674,15 @@ class OrchestratorAgent(MCPAgent):
             "token_vault_used": True,        # key proof for judges
             "repo": repo,
             "goal": goal,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "agent_errors": agent_errors or [],
         }
 
     # ─────────────────────────────────────────────────────────────────────────
     # TRIAGE PIPELINE — backwards-compatible alias used by old UI endpoints
     # ─────────────────────────────────────────────────────────────────────────
 
+    @log_method
     @metric_counter("triage")
     async def triage_issues(
         self,
@@ -689,21 +720,22 @@ class OrchestratorAgent(MCPAgent):
             return self._error_response(reasoning, str(exc))
 
         self._step(reasoning, "Fetching open issues from GitHub",
-                   input_data={"repo": repo, "limit": limit})
+                   input_data={"repo": repo, "limit": limit})  # noqa: E501
         try:
             issues = await self.github.list_open_issues(github_token, repo, limit=limit)
         except Exception as exc:
-            return self._error_response(reasoning, f"GitHub API error: {exc}")
+            return self._error_response(
+                reasoning,
+                f"GitHub API error: {exc}",
+                token_vault_used=True,
+            )
 
         self._step(reasoning, f"Fetched {len(issues)} open issues",
                    output_data={"issues_count": len(issues)})
 
         triaged: List[Dict] = []
         for issue in issues:
-            result = await self.triage_single_issue(
-                issue=issue,
-                github_token=github_token,
-            )
+            result = await self.triage_single_issue(issue=issue)
             triaged.append(result)
 
         self._step(reasoning, f"Triage complete — {len(triaged)} issues processed",
@@ -719,12 +751,14 @@ class OrchestratorAgent(MCPAgent):
             "issues": triaged,
             "summary": summary,
             "token_vault_used": True,
-            "reasoning": reasoning,
-            "timestamp": datetime.now().isoformat(),
+            "reasoning": normalize_reasoning(reasoning),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
+    @log_method
+    @metric_counter("triage_single")
     async def triage_single_issue(
-        self, issue: Dict, github_token: Optional[VaultToken] = None
+        self, issue: Dict,
     ) -> Dict[str, Any]:
         """Classify a single issue via Planner + Risks."""
         title = issue.get("title", "")
@@ -765,7 +799,8 @@ class OrchestratorAgent(MCPAgent):
     # Helpers
     # ─────────────────────────────────────────────────────────────────────────
 
-    def _calculate_priority(self, classification: Dict, risk_level: str) -> str:
+    @staticmethod
+    def _calculate_priority(classification: Dict, risk_level: str) -> str:
         complexity = classification.get("complexity", "medium")
         if risk_level == "CRITICAL":
             return "P0"
@@ -775,8 +810,9 @@ class OrchestratorAgent(MCPAgent):
             return "P2"
         return "P3"
 
+    @staticmethod
     def _generate_labels(
-        self, classification: Dict, priority: str, risk_level: str
+        classification: Dict, priority: str, risk_level: str,
     ) -> List[str]:
         labels = [
             f"type::{classification.get('task_type', 'other')}",
@@ -788,8 +824,8 @@ class OrchestratorAgent(MCPAgent):
             labels.append(f"risk::{risk_level.lower()}")
         return labels
 
+    @staticmethod
     def _build_pr_body(
-        self,
         goal: str,
         issues_found: List,
         overall_risk: str,
@@ -819,8 +855,8 @@ class OrchestratorAgent(MCPAgent):
 *Powered by [Authorized to Act](https://authorizedtoact.devpost.com/) hackathon project*
 """
 
+    @staticmethod
     def _build_slack_message(
-        self,
         repo: str,
         goal: str,
         pr_url: Optional[str],
@@ -837,8 +873,8 @@ class OrchestratorAgent(MCPAgent):
             f"{summary}"
         )
 
+    @staticmethod
     def _fallback_summary(
-        self,
         repo: str,
         goal: str,
         risk: str,
@@ -852,7 +888,8 @@ class OrchestratorAgent(MCPAgent):
             f"PR: {pr_url or 'none'}."
         )
 
-    def _triage_summary(self, triaged: List[Dict]) -> Dict:
+    @staticmethod
+    def _triage_summary(triaged: List[Dict]) -> Dict:
         priority_counts: Dict[str, int] = {}
         type_counts: Dict[str, int] = {}
         for item in triaged:
@@ -872,16 +909,28 @@ class OrchestratorAgent(MCPAgent):
         }
 
     @staticmethod
-    def _error_response(reasoning: List[ReasoningStep], message: str) -> Dict:
+    def _error_response(
+        reasoning: List[ReasoningStep],
+        message: str,
+        *,
+        token_vault_used: bool = False,
+    ) -> Dict:
+        """Build a structured error response.
+
+        Contains the full UI contract fields so callers don't need to
+        merge extra keys.  Fields irrelevant to the current pipeline
+        (e.g. pr_url for triage) are included as None for schema
+        consistency with the UI.
+        """
         return {
             "status": "error",
             "error": message,
-            "reasoning": reasoning,
+            "reasoning": normalize_reasoning(reasoning),
             "pr_url": None,
             "pr_number": None,
             "issues_found": [],
             "risk_level": "UNKNOWN",
             "summary": f"Pipeline failed: {message}",
-            "token_vault_used": False,
-            "timestamp": datetime.now().isoformat(),
+            "token_vault_used": token_vault_used,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
