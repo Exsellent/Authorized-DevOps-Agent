@@ -1,4 +1,4 @@
-from .agent import ProgressAgent
+from agents.progress.agent import ProgressAgent
 
 agent = ProgressAgent()
 app = agent.app
@@ -7,7 +7,7 @@ app = agent.app
 @app.get("/")
 async def root():
     return {
-        "message": "Authorized DevOps Agent is running!",
+        "message": "Progress Agent is running!",
         "agent": agent.name,
         "available_tools": list(agent.tools.keys()),
         "docs": "/docs"

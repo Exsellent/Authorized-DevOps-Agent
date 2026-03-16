@@ -7,47 +7,24 @@ Responsibilities:
   - Produce health status and escalation recommendations
   - Feed structured metrics to Digest Agent
 
-Changes vs. original GitLab version:
-  - gitlab_velocity → track_progress  (called by Orchestrator)
-  - register_tool("track_progress")   (Orchestrator calls this tool name)
-  - analyze_progress prompt:          GitLab CI/CD → GitHub Actions context
-  - track_progress:                   accepts pr_created, issues_found_count,
-                                      risk_level from Orchestrator instead of
-                                      live GitLab API call
-  - _get_mock_issues removed          (data now comes from Orchestrator)
-  - logger.extra= dicts removed       (breaks some log handlers)
-  - log_method: added @wraps          (preserves function metadata)
-  - confidence field:                 "mock" hardcode replaced with real logic
 """
 
 import logging
 from datetime import datetime
-from functools import wraps
 from typing import Any, Dict, List, Optional
 
 from shared.llm_client import LLMClient
 from shared.mcp_base import MCPAgent
 from shared.metrics import metric_counter
-from shared.models import ReasoningStep
+from shared.utils import (
+    is_invalid_response,
+    log_method,
+    next_step,
+    normalize_reasoning,
+    sanitize_user_input,
+)
 
 logger = logging.getLogger("progress_agent")
-
-
-# ── Decorator ─────────────────────────────────────────────────────────────────
-
-def log_method(func):
-    """Log entry/exit without swallowing exceptions."""
-    @wraps(func)   # FIX: was missing @wraps → broke __name__ on decorated methods
-    async def wrapper(self, *args, **kwargs):
-        logger.info("%s called", func.__name__)
-        try:
-            result = await func(self, *args, **kwargs)
-            logger.info("%s completed", func.__name__)
-            return result
-        except Exception as exc:
-            logger.error("%s failed: %s", func.__name__, exc)
-            raise
-    return wrapper
 
 
 # ── Agent ─────────────────────────────────────────────────────────────────────
@@ -82,16 +59,6 @@ class ProgressAgent(MCPAgent):
         logger.info("ProgressAgent initialised")
 
     # ── Helpers ───────────────────────────────────────────────────────────────
-
-    def _is_invalid_response(self, response: str) -> bool:
-        """Return True if LLM returned an error stub instead of a real answer."""
-        lower = response.lower()
-        bad_signals = [
-            "[stub]", "[llm error]", "[claude error]",
-            "unauthorized", "401", "client error",
-            "for more information check", "connection error", "timeout",
-        ]
-        return any(s in lower for s in bad_signals)
 
     def _classify_velocity(self, completion_rate: float) -> str:
         if completion_rate >= self._THRESHOLDS["excellent"]:
@@ -157,33 +124,24 @@ class ProgressAgent(MCPAgent):
 
         return actions, urgency
 
-    def _next_step(
-        self,
-        reasoning: List[ReasoningStep],
-        description: str,
-        input_data: Optional[Dict] = None,
-        output_data: Optional[Dict] = None,
+    def _step(
+            self,
+            reasoning: list,
+            description: str,
+            input_data: Optional[Dict] = None,
+            output_data: Optional[Dict] = None,
     ) -> None:
-        reasoning.append(
-            ReasoningStep(
-                step_number=len(reasoning) + 1,
-                description=description,
-                timestamp=datetime.now().isoformat(),
-                input_data=input_data or {},
-                output=output_data or {},
-                agent=self.name,
-            )
-        )
+        next_step(reasoning, description, self.name, input_data, output_data)
 
     # ── MCP Tool: analyze_progress ────────────────────────────────────────────
 
-    @log_method
     @metric_counter("progress")
+    @log_method
     async def analyze_progress(
         self,
         commits: List[str],
         project_name: Optional[str] = None,
-        repo: Optional[str] = None,           # NEW — GitHub "owner/repo"
+        repo: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Analyse a list of commit messages and return a velocity signal.
@@ -195,15 +153,22 @@ class ProgressAgent(MCPAgent):
             project_name: Human-readable project label (display only).
             repo:         "owner/repo" string (optional, for context in prompt).
         """
+        # Local import for type hint only (aligns with planner pattern)
+        from shared.models import ReasoningStep
+
         reasoning: List[ReasoningStep] = []
         fallback_used = False
 
-        repo_display = repo or project_name or "GitHub repository"
+        # Sanitize all user‑provided inputs that go into prompts
+        safe_commits = [sanitize_user_input(c) for c in commits]
+        safe_project = sanitize_user_input(project_name) if project_name else None
+        safe_repo = sanitize_user_input(repo) if repo else None
+        repo_display = safe_repo or safe_project or "GitHub repository"
 
-        self._next_step(
+        self._step(
             reasoning,
             "Received commits for progress analysis",
-            input_data={"commits_count": len(commits), "repo": repo_display},
+            input_data={"commits_count": len(safe_commits), "repo": repo_display},
         )
 
         prompt = f"""You are an autonomous progress monitoring agent in a GitHub Actions workflow.
@@ -215,8 +180,8 @@ Your analysis will:
 - Trigger Slack notifications if velocity drops
 - Feed into the sprint burn-down report
 
-COMMITS ({len(commits)} total):
-{chr(10).join(f"- {c}" for c in commits[:30])}
+COMMITS ({len(safe_commits)} total):
+{chr(10).join(f"- {c}" for c in safe_commits[:30])}
 
 Provide:
 1. Summary: 2-3 sentences describing what was accomplished
@@ -229,10 +194,10 @@ Keep response under 150 words. Be specific and data-driven.
         try:
             summary = await self.llm.chat(prompt)
 
-            if self._is_invalid_response(summary):
+            if is_invalid_response(summary):
                 fallback_used = True
                 summary = (
-                    f"Processed {len(commits)} commit(s) for {repo_display}. "
+                    f"Processed {len(safe_commits)} commit(s) for {repo_display}. "
                     "Velocity signal: STEADY (LLM unavailable — baseline applied)."
                 )
         except Exception as exc:
@@ -240,25 +205,28 @@ Keep response under 150 words. Be specific and data-driven.
             fallback_used = True
             summary = (
                 f"Progress analysis failed for {repo_display}. "
-                f"Processed {len(commits)} commit(s). Velocity: STEADY (fallback)."
+                f"Processed {len(safe_commits)} commit(s). Velocity: STEADY (fallback)."
             )
 
-        self._next_step(
+        self._step(
             reasoning,
             "LLM commit analysis complete",
             output_data={"summary_length": len(summary), "fallback_used": fallback_used},
         )
 
-        # Extract velocity signal from LLM text
-        lower = summary.lower()
-        if "blocked" in lower:
-            velocity_signal = "BLOCKED"
-        elif any(w in lower for w in ("accelerat", "excellent", "ahead")):
-            velocity_signal = "ACCELERATING"
-        elif any(w in lower for w in ("slow", "behind", "delayed")):
-            velocity_signal = "SLOWING"
-        else:
+        # Extract velocity signal from LLM text only if not fallback
+        if fallback_used:
             velocity_signal = "STEADY"
+        else:
+            lower = summary.lower()
+            if "blocked" in lower:
+                velocity_signal = "BLOCKED"
+            elif any(w in lower for w in ("accelerat", "excellent", "ahead")):
+                velocity_signal = "ACCELERATING"
+            elif any(w in lower for w in ("slow", "behind", "delayed")):
+                velocity_signal = "SLOWING"
+            else:
+                velocity_signal = "STEADY"
 
         auto_actions = ["update_dashboard"]
         if velocity_signal == "BLOCKED":
@@ -268,7 +236,7 @@ Keep response under 150 words. Be specific and data-driven.
         elif velocity_signal == "ACCELERATING":
             auto_actions.append("celebrate_milestone")
 
-        self._next_step(
+        self._step(
             reasoning,
             "Velocity signal and actions determined",
             output_data={"velocity_signal": velocity_signal, "auto_actions": auto_actions},
@@ -281,27 +249,27 @@ Keep response under 150 words. Be specific and data-driven.
 
         return {
             "repo": repo_display,
-            "commits_count": len(commits),
+            "commits_count": len(safe_commits),
             "summary": summary,
             "velocity_signal": velocity_signal,
             "auto_actions": auto_actions,
             "fallback_used": fallback_used,
-            "reasoning": reasoning,
+            "reasoning": normalize_reasoning(reasoning),
             "timestamp": datetime.now().isoformat(),
         }
 
     # ── MCP Tool: track_progress ──────────────────────────────────────────────
 
-    @log_method
     @metric_counter("progress")
+    @log_method
     async def track_progress(
         self,
         repo: Optional[str] = None,
-        pr_created: bool = False,            # did Orchestrator create a PR?
-        issues_found_count: int = 0,         # from Risks Agent
-        risk_level: str = "MEDIUM",          # from Risks Agent
-        issues_resolved_count: int = 0,      # optional: closed issues count
-        total_issues_count: int = 0,         # optional: total open issues count
+        pr_created: bool = False,
+        issues_found_count: int = 0,
+        risk_level: str = "MEDIUM",
+        issues_resolved_count: int = 0,
+        total_issues_count: int = 0,
         project_id: Optional[str] = None,    # legacy alias (ignored)
     ) -> Dict[str, Any]:
         """
@@ -318,10 +286,16 @@ Keep response under 150 words. Be specific and data-driven.
             issues_resolved_count:  Issues already closed (for completion rate).
             total_issues_count:     Total open issues in the repo.
         """
-        reasoning: List[ReasoningStep] = []
-        repo_display = repo or "repository"
+        # Local import for type hint only
+        from shared.models import ReasoningStep
 
-        self._next_step(
+        reasoning: List[ReasoningStep] = []
+
+        # Sanitize repo string before prompt interpolation
+        safe_repo = sanitize_user_input(repo) if repo else None
+        repo_display = safe_repo or "repository"
+
+        self._step(
             reasoning,
             "Starting repository health assessment",
             input_data={
@@ -347,7 +321,7 @@ Keep response under 150 words. Be specific and data-driven.
         if risk_level == "CRITICAL" and velocity_status == "excellent":
             velocity_status = "at_risk"
 
-        self._next_step(
+        self._step(
             reasoning,
             "Deterministic metrics calculated",
             output_data={
@@ -385,7 +359,7 @@ Be concise (under 100 words), data-driven, and specific to the numbers above.
         llm_fallback = False
         try:
             llm_analysis = await self.llm.chat(llm_prompt)
-            if self._is_invalid_response(llm_analysis):
+            if is_invalid_response(llm_analysis):
                 llm_fallback = True
                 llm_analysis = self._baseline_analysis(
                     completion_rate, velocity_status, total, done
@@ -397,7 +371,7 @@ Be concise (under 100 words), data-driven, and specific to the numbers above.
                 completion_rate, velocity_status, total, done
             )
 
-        self._next_step(
+        self._step(
             reasoning,
             "LLM interpretation complete",
             output_data={"llm_fallback": llm_fallback, "length": len(llm_analysis)},
@@ -406,14 +380,13 @@ Be concise (under 100 words), data-driven, and specific to the numbers above.
         # ── Actions and urgency ───────────────────────────────────────────────
         auto_actions, urgency = self._determine_actions(velocity_status, risk_level)
 
-        self._next_step(
+        self._step(
             reasoning,
             "Escalation actions determined",
             output_data={"auto_actions": auto_actions, "urgency": urgency},
         )
 
         # ── Confidence — real logic, not hardcoded "mock" ─────────────────────
-        # High confidence when we have real issue counts; low when everything is zero
         if total_issues_count > 0 or issues_resolved_count > 0:
             confidence = "high"
         elif pr_created or issues_found_count > 0:
@@ -459,39 +432,17 @@ Be concise (under 100 words), data-driven, and specific to the numbers above.
                 "actions": auto_actions,
                 "urgency": urgency,
                 "triggers": {
-                    "notify_pm":       velocity_status in ("critical", "at_risk"),
+                    "notify_pm":        velocity_status in ("critical", "at_risk"),
                     "alert_leadership": velocity_status == "critical" or risk_level == "CRITICAL",
-                    "celebrate":       velocity_status == "excellent",
-                    "slack_notify":    urgency in ("immediate", "high"),
+                    "celebrate":        velocity_status == "excellent",
+                    "slack_notify":     urgency in ("immediate", "high"),
                 },
             },
 
-            "reasoning": reasoning,
+            "reasoning": normalize_reasoning(reasoning),
             "metadata": {
                 "agent": self.name,
                 "llm_fallback": llm_fallback,
                 "timestamp": datetime.now().isoformat(),
             },
         }
-
-
-# ── Health check ──────────────────────────────────────────────────────────────
-
-def get_agent_status() -> Dict[str, Any]:
-    """Returns agent status for health monitoring endpoint."""
-    return {
-        "agent_name": "progress",
-        "status": "HEALTHY",
-        "capabilities": ["analyze_progress", "track_progress"],
-        "features": [
-            "commit_velocity_analysis",
-            "llm_enhanced_interpretation",
-            "deterministic_metrics",
-            "automated_escalations",
-            "fallback_strategy",
-        ],
-        "auth0_token_vault": False,   # ← explicit: Progress does NOT use Token Vault
-        "agent_type": "autonomous",
-        "llm_powered": True,
-        "timestamp": datetime.now().isoformat(),
-    }
