@@ -75,11 +75,8 @@ The system runs a **six‑agent autonomous pipeline**:
 
 The upstream agent (OpenClaw or any AI) never sees the GitHub token. The token exists for one request, is used, then garbage‑collected.
 
-<video src="https://github.com/Exsellent/Authorized-DevOps-Agent/blob/main/assets/demo-video-agents-fixed.mp4?raw=true"
-       controls
-       muted
-       width="100%">
-</video>
+https://github.com/Exsellent/Authorized-DevOps-Agent/raw/main/assets/demo-video-agents-fixed.mp4
+
 
 ---
 
