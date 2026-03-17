@@ -1,4 +1,4 @@
-from src.agents.planner.agent import PlannerAgent
+from agents.planner.agent import PlannerAgent
 
 agent = PlannerAgent()
 app = agent.app
@@ -7,7 +7,7 @@ app = agent.app
 @app.get("/")
 async def root():
     return {
-        "message": "Authorized DevOps Agent is running!",
+        "message": "Planner Agent is running!",
         "agent": agent.name,
         "available_tools": list(agent.tools.keys()),
         "docs": "/docs"

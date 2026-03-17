@@ -1,4 +1,5 @@
 """
+
 Planner Agent — strategic planning component of the multi-agent DevOps system.
 
 The Planner analyses GitHub issues or user goals and produces a structured
@@ -23,13 +24,20 @@ import re
 import statistics
 from dataclasses import dataclass, asdict
 from datetime import datetime
-from functools import wraps
 from typing import Any, Dict, List, Optional
 
 from shared.llm_client import LLMClient
 from shared.mcp_base import MCPAgent
 from shared.metrics import metric_counter
 from shared.models import ReasoningStep
+from shared.utils import (
+    is_invalid_response,
+    log_method,
+    next_step,
+    normalize_reasoning,
+    safe_parse_json,
+    sanitize_user_input,
+)
 
 logger = logging.getLogger("planner_agent")
 
@@ -71,25 +79,6 @@ class ExecutiveSummary:
     complexity_assessment: str
 
 
-# ── Decorator ─────────────────────────────────────────────────────────────────
-
-def log_method(func):
-    """Log entry/exit and surface exceptions without swallowing them."""
-
-    @wraps(func)
-    async def wrapper(self, *args, **kwargs):
-        logger.info("%s called", func.__name__)
-        try:
-            result = await func(self, *args, **kwargs)
-            logger.info("%s completed", func.__name__)
-            return result
-        except Exception as exc:
-            logger.error("%s failed: %s", func.__name__, exc)
-            raise
-
-    return wrapper
-
-
 # ── Agent ─────────────────────────────────────────────────────────────────────
 
 class PlannerAgent(MCPAgent):
@@ -102,8 +91,8 @@ class PlannerAgent(MCPAgent):
 
     # Valid task types used in classification prompt and routing logic.
     TASK_TYPES = (
-        "security_fix",  # CVE patches, auth issues, secret leaks  ← new
-        "dependency_update",  # package bumps, vulnerability updates     ← new
+        "security_fix",       # CVE patches, auth issues, secret leaks
+        "dependency_update",  # package bumps, vulnerability updates
         "api_development",
         "database_migration",
         "performance",
@@ -129,7 +118,7 @@ class PlannerAgent(MCPAgent):
     # ── Historical data ───────────────────────────────────────────────────────
 
     def _load_historical_data(self) -> List[HistoricalTask]:
-        """Seed historical tasks for effort estimation."""
+        """Seed historical tasks for effort estimation (expanded coverage)."""
         return [
             HistoricalTask("security_fix", 4, 6, "medium", ["regression_risk"], 1, True),
             HistoricalTask("security_fix", 8, 10, "high", ["breaking_change"], 2, True),
@@ -141,52 +130,24 @@ class PlannerAgent(MCPAgent):
             HistoricalTask("bug", 3, 4, "low", [], 1, True),
             HistoricalTask("bug", 8, 14, "high", ["root_cause_unclear"], 2, False),
             HistoricalTask("infrastructure", 10, 15, "high", ["api_changes"], 3, False),
+            HistoricalTask("feature", 6, 8, "medium", ["requirement_changes"], 2, True),
+            HistoricalTask("feature", 12, 16, "high", ["integration_delay"], 3, True),
+            HistoricalTask("performance", 5, 7, "medium", ["environment_mismatch"], 2, True),
+            HistoricalTask("refactor", 4, 5, "low", [], 1, True),
+            HistoricalTask("refactor", 10, 12, "medium", ["regression_tests"], 2, True),
+            # Add a fallback entry for 'other' to avoid zero similar tasks
+            HistoricalTask("other", 4, 6, "medium", [], 1, True),
         ]
 
     # ── JSON parsing ──────────────────────────────────────────────────────────
 
-    def _safe_parse_json(self, response: str, fallback: Dict) -> Dict:
-        """
-        Robustly extract JSON from an LLM response.
-
-        Handles:
-        - ```json ... ``` markdown fences
-        - Leading/trailing prose
-        - Trailing commas (basic removal)
-        - Nested objects
-        """
-        try:
-            # Strip markdown fences
-            cleaned = re.sub(r"```(?:json)?\s*|\s*```", "", response).strip()
-
-            # Locate outermost braces
-            first = cleaned.find("{")
-            last = cleaned.rfind("}")
-            if first != -1 and last != -1:
-                cleaned = cleaned[first: last + 1]
-
-            # Remove trailing commas before } or ]
-            cleaned = re.sub(r",\s*([}\]])", r"\1", cleaned)
-
-            try:
-                return json.loads(cleaned)
-            except json.JSONDecodeError:
-                # Fallback: greedy nested-object search
-                match = re.search(
-                    r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}", response, re.DOTALL
-                )
-                if match:
-                    return json.loads(match.group(0))
-
-                logger.warning("Could not extract valid JSON from LLM response")
-                return fallback
-
-        except Exception as exc:
-            logger.debug("JSON parsing failed: %s", exc)
-            return fallback
-
     def _safe_parse_json_array(self, response: str, fallback: List) -> List:
-        """Extract a top-level JSON array from an LLM response."""
+        """
+        Extract a top-level JSON array from an LLM response.
+        Kept local because shared.safe_parse_json returns Dict, not List.
+        Adds markdown-fence stripping and trailing-comma removal on top of
+        the shared object parser.
+        """
         try:
             cleaned = re.sub(r"```(?:json)?\s*|\s*```", "", response).strip()
             first = cleaned.find("[")
@@ -200,12 +161,26 @@ class PlannerAgent(MCPAgent):
         return fallback
 
     def _is_fallback_response(self, data: Dict) -> bool:
-        """Return True if the LLM silently used the fallback path."""
-        indicators = ["fallback", "format mismatch", "parsing failed", "using default"]
+        """
+        Return True when safe_parse_json returned the fallback dict.
+        Detects this by checking whether the fallback sentinel phrases appear
+        in the 'reasoning' field — phrases the LLM itself would never produce
+        verbatim (e.g. "LLM response could not be parsed").
+        """
+        sentinel = "llm response could not be parsed"
         reasoning = data.get("reasoning", "")
-        if isinstance(reasoning, str):
-            return any(ind in reasoning.lower() for ind in indicators)
-        return False
+        return isinstance(reasoning, str) and sentinel in reasoning.lower()
+
+    def _validate_classification(self, data: Dict) -> bool:
+        """
+        Ensure classification dict contains required fields.
+        If not, it should be replaced with fallback.
+        """
+        required = {"task_type", "complexity", "technical_uncertainty",
+                    "priority_hint", "suggested_assignee_team"}
+        if not isinstance(data, dict):
+            return False
+        return all(k in data for k in required)
 
     # ── Reasoning trail ───────────────────────────────────────────────────────
 
@@ -216,39 +191,27 @@ class PlannerAgent(MCPAgent):
             input_data: Optional[Dict] = None,
             output_data: Optional[Dict] = None,
     ) -> None:
-        reasoning.append(
-            ReasoningStep(
-                step_number=len(reasoning) + 1,
-                description=description,
-                timestamp=datetime.now().isoformat(),
-                input_data=input_data or {},
-                output=output_data or {},
-                agent=self.name,
-            )
-        )
+        next_step(reasoning, description, self.name, input_data, output_data)
 
     def _normalize_reasoning(self, reasoning: List[ReasoningStep]) -> List[Dict]:
-        return [
-            {
-                "step_number": s.step_number,
-                "description": s.description,
-                "timestamp": s.timestamp,
-                "input_data": s.input_data,
-                "output": s.output,
-                "agent": s.agent,
-            }
-            for s in reasoning
-        ]
+        return normalize_reasoning(reasoning)
 
     # ── Effort estimation ─────────────────────────────────────────────────────
 
     def _find_similar_tasks(
             self, task_type: str, complexity: str
     ) -> List[HistoricalTask]:
+        """Find tasks with exact type and complexity match."""
         return [
             t for t in self.historical_tasks
             if t.task_type == task_type and t.complexity == complexity
         ]
+
+    def _find_similar_tasks_by_type(
+            self, task_type: str
+    ) -> List[HistoricalTask]:
+        """Find tasks with same type (any complexity) for broader matching."""
+        return [t for t in self.historical_tasks if t.task_type == task_type]
 
     def _get_confidence_label(self, confidence: float) -> str:
         if confidence >= 0.7:
@@ -260,10 +223,19 @@ class PlannerAgent(MCPAgent):
     async def _generate_predictive_estimate(
             self, task_type: str, complexity: str, subtasks_count: int
     ) -> PredictiveEstimate:
-        """Statistics-based estimate from historical seeds."""
+        """Statistics-based estimate from historical seeds, with fallback to broader matches."""
+        # First try exact match
         similar = self._find_similar_tasks(task_type, complexity)
 
+        # If none, try same type (any complexity)
         if not similar:
+            similar = self._find_similar_tasks_by_type(task_type)
+            match_type = "broad"
+        else:
+            match_type = "exact"
+
+        if not similar:
+            # No historical data at all → heuristic fallback
             base = subtasks_count * {"low": 3, "medium": 7, "high": 11}.get(complexity, 7)
             return PredictiveEstimate(
                 base_estimate_hours=float(base),
@@ -271,16 +243,27 @@ class PlannerAgent(MCPAgent):
                 confidence_interval_high=base * 1.5,
                 confidence_level=0.3,
                 similar_tasks_analyzed=0,
-                accuracy_factors={"fallback": 1.0},
+                accuracy_factors={"fallback": 1.0, "method": "heuristic"},
             )
 
+        # Use actual hours from similar tasks
         actual = [t.actual_hours for t in similar]
         mean = statistics.mean(actual)
         std = statistics.stdev(actual) if len(actual) > 1 else mean * 0.3
-        variance_penalty = min(std / mean, 1.0)
+
+        # Adjust for subtask count difference
+        avg_subtasks = sum(t.estimated_hours / 5 for t in similar)  # rough proxy
+        subtask_ratio = subtasks_count / max(avg_subtasks, 1)
+        base = mean * subtask_ratio
+
+        # Confidence factors
+        variance_penalty = min(std / mean, 1.0) if mean > 0 else 0.5
         data_quality = min(len(similar) / 5.0, 1.0)
         confidence = max(0.1, data_quality * (1 - variance_penalty))
-        base = mean * (subtasks_count / 5.0)
+
+        # Adjust confidence for broad match
+        if match_type == "broad":
+            confidence *= 0.8
 
         return PredictiveEstimate(
             base_estimate_hours=base,
@@ -291,6 +274,7 @@ class PlannerAgent(MCPAgent):
             accuracy_factors={
                 "historical_data_quality": data_quality,
                 "variance_penalty": variance_penalty,
+                "match_type": match_type,
             },
         )
 
@@ -320,7 +304,6 @@ class PlannerAgent(MCPAgent):
             f"priority {priority}, assigned to {team} team."
         )
 
-        # Risk bullets derived from classification fields, not keyword hacks
         main_risks: List[str] = []
         if complexity == "high":
             main_risks.append("High complexity increases delivery risk and review overhead")
@@ -384,7 +367,6 @@ class PlannerAgent(MCPAgent):
                 for m in matches:
                     clean = m.strip().split("\n")[0]
                     clean = re.sub(r"\*\*(.*?)\*\*", r"\1", clean)
-                    # Drop "Header: detail" → keep only the header
                     if ":" in clean:
                         clean = clean.split(":")[0].strip()
                     if clean:
@@ -440,10 +422,10 @@ class PlannerAgent(MCPAgent):
             self,
             description: str,
             context: Optional[str] = None,
-            issue_number: Optional[int] = None,  # GitHub convention (was issue_id)
+            issue_number: Optional[int] = None,
             title: Optional[str] = None,
-            repo: Optional[str] = None,  # NEW — from Orchestrator
-            file_tree: Optional[List[str]] = None,  # NEW — from Orchestrator
+            repo: Optional[str] = None,
+            file_tree: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
         Main planning pipeline:
@@ -462,6 +444,11 @@ class PlannerAgent(MCPAgent):
         """
         reasoning: List[ReasoningStep] = []
 
+        # Sanitize user-provided inputs before prompt interpolation
+        description = sanitize_user_input(description)
+        context = sanitize_user_input(context) if context else None
+        title = sanitize_user_input(title) if title else None
+
         # ── Build reference strings for prompts ───────────────────────────────
         issue_ref = (
             f"#{issue_number}: {title}"
@@ -476,7 +463,7 @@ class PlannerAgent(MCPAgent):
         )
         task_types_str = "|".join(self.TASK_TYPES)
 
-        # ── Step 1: Classification ─────────────────────────────────────────────
+        # ── Step 1: Classification ────────────────────────────────────────────
         self._next_step(
             reasoning,
             "Classifying task type, complexity and priority",
@@ -524,7 +511,11 @@ Priority guide:
 """
 
         classification_response = await self.llm.chat(classification_prompt)
-        classification = self._safe_parse_json(
+        if is_invalid_response(classification_response):
+            logger.warning("Classification LLM response invalid, using fallback")
+            classification_response = ""
+
+        classification = safe_parse_json(
             classification_response,
             fallback={
                 "task_type": "other",
@@ -536,7 +527,22 @@ Priority guide:
                 "reasoning": "Fallback classification — LLM response could not be parsed",
             },
         )
-        classification_fallback = self._is_fallback_response(classification)
+
+        # Validate classification structure; if invalid, force fallback
+        if not self._validate_classification(classification):
+            logger.warning("Classification missing required fields, forcing fallback")
+            classification = {
+                "task_type": "other",
+                "complexity": "medium",
+                "technical_uncertainty": "medium",
+                "priority_hint": "P2",
+                "auto_labels": ["type::other", "complexity::medium"],
+                "suggested_assignee_team": "backend",
+                "reasoning": "Fallback classification — invalid structure",
+            }
+            classification_fallback = True
+        else:
+            classification_fallback = self._is_fallback_response(classification)
 
         self._next_step(
             reasoning,
@@ -585,6 +591,10 @@ Return ONLY a JSON array of strings:
 
         try:
             decomp_response = await self.llm.chat(decomposition_prompt)
+            if is_invalid_response(decomp_response):
+                logger.warning("Decomposition LLM response invalid, using fallback")
+                raise ValueError("LLM returned invalid response")
+
             subtasks = self._extract_subtasks(decomp_response)
             if not subtasks:
                 raise ValueError("No subtasks extracted")
@@ -677,6 +687,8 @@ Return ONLY a JSON array of strings:
         Standalone effort estimation tool (called directly when only estimate is needed).
         Returns the PredictiveEstimate as a plain dict.
         """
+        description = sanitize_user_input(description)
+
         similar = [
             t for t in self.historical_tasks
             if t.task_type == classification.get("task_type")
@@ -734,6 +746,9 @@ Return ONLY a JSON array of strings:
         """
         reasoning: List[ReasoningStep] = []
 
+        description = sanitize_user_input(description)
+        context = sanitize_user_input(context) if context else None
+
         self._next_step(
             reasoning,
             "Starting risk-aware planning",
@@ -762,8 +777,11 @@ Return ONLY valid JSON:
 """
 
         response = await self.llm.chat(risk_prompt)
-        # FIX: use _safe_parse_json instead of bare json.loads
-        plan = self._safe_parse_json(
+        if is_invalid_response(response):
+            logger.warning("risk_aware_planning LLM response invalid, using fallback")
+            response = "{}"
+
+        plan = safe_parse_json(
             response,
             fallback={
                 "risks": [
