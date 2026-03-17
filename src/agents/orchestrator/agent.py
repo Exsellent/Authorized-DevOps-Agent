@@ -762,8 +762,10 @@ class OrchestratorAgent(MCPAgent):
     ) -> Dict[str, Any]:
         """Classify a single issue via Planner + Risks."""
         title = issue.get("title", "")
-        body = issue.get("body", "") or ""
-        issue_number = issue.get("number", 0)
+        # Handle both GitHub "body" and GitLab "description" fields
+        body = issue.get("body") or issue.get("description", "") or ""
+        # Handle both GitHub "number" and GitLab "iid" fields
+        issue_number = issue.get("number") or issue.get("iid", 0)
 
         planner_result = await self._call_agent(
             self.planner_url, "plan_with_reasoning",
