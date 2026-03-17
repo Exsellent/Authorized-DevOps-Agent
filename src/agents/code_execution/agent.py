@@ -28,21 +28,30 @@ from shared.utils import (
 
 logger = logging.getLogger("code_execution_agent")
 
+# ── Debug flags ───────────────────────────────────────────────────────────────
+# Set to True to include reasoning trail in API responses (for observability/debug).
+# When False, responses contain only business data.
+DEBUG_REASONING = os.getenv("DEBUG_REASONING", "false").lower() == "true"
+
+# Include raw code in response (in addition to base64-encoded patch files).
+# Raw code is useful for UI preview but duplicates data. Disable by default.
+DEBUG_INCLUDE_RAW_CODE = os.getenv("DEBUG_INCLUDE_RAW_CODE", "false").lower() == "true"
+
 
 # ── Enums ─────────────────────────────────────────────────────────────────────
 
 class ThinkingLevel(str, Enum):
-    STRATEGIC    = "strategic"
-    GENERATION   = "generation"
-    EXECUTION    = "execution"
+    STRATEGIC = "strategic"
+    GENERATION = "generation"
+    EXECUTION = "execution"
     VERIFICATION = "verification"
-    REFLECTION   = "reflection"
+    REFLECTION = "reflection"
 
 
 class ExecutionStatus(str, Enum):
-    SUCCESS      = "success"
-    FAILURE      = "failure"
-    TIMEOUT      = "timeout"
+    SUCCESS = "success"
+    FAILURE = "failure"
+    TIMEOUT = "timeout"
     SYNTAX_ERROR = "syntax_error"
 
 
@@ -50,56 +59,56 @@ class ExecutionStatus(str, Enum):
 
 @dataclass
 class ExecutableTest:
-    test_id:           str
-    test_code:         str
-    description:       str
+    test_id: str
+    test_code: str
+    description: str
     expected_behavior: str
-    passed:            Optional[bool]  = None
+    passed: Optional[bool] = None
     execution_time_ms: Optional[float] = None
-    stdout:            Optional[str]   = None
-    stderr:            Optional[str]   = None
-    error_message:     Optional[str]   = None
+    stdout: Optional[str] = None
+    stderr: Optional[str] = None
+    error_message: Optional[str] = None
 
 
 @dataclass
 class VerificationArtifact:
-    artifact_id:       str
-    artifact_type:     str
-    timestamp:         str
-    stdout:            str
-    stderr:            str
-    exit_code:         int
+    artifact_id: str
+    artifact_type: str
+    timestamp: str
+    stdout: str
+    stderr: str
+    exit_code: int
     execution_time_ms: float
-    tests_passed:      int
-    tests_failed:      int
-    test_details:      List[Dict[str, Any]]
-    code_hash:         str
-    code_length:       int
-    quality_score:     float
-    production_ready:  bool
-    confidence:        float
+    tests_passed: int
+    tests_failed: int
+    test_details: List[Dict[str, Any]]
+    code_hash: str
+    code_length: int
+    quality_score: float
+    production_ready: bool
+    confidence: float
 
 
 @dataclass
 class TestSuite:
-    suite_id:   str
-    tests:      List[ExecutableTest]
+    suite_id: str
+    tests: List[ExecutableTest]
     created_at: str
-    code_hash:  str
+    code_hash: str
 
 
 @dataclass
 class CodeIteration:
-    iteration_number:      int
-    timestamp:             str
-    code:                  str
-    code_hash:             str
-    trigger:               str
-    previous_error:        Optional[str]
+    iteration_number: int
+    timestamp: str
+    code: str
+    code_hash: str
+    trigger: str
+    previous_error: Optional[str]
     verification_artifact: Optional[VerificationArtifact]
-    thinking_level:        ThinkingLevel
-    status:                ExecutionStatus
-    next_action:           str
+    thinking_level: ThinkingLevel
+    status: ExecutionStatus
+    next_action: str
 
 
 @dataclass
@@ -108,10 +117,10 @@ class PatchFile:
     Single file patch ready for GitHub API commit.
     Consumed by Orchestrator.create_branch / commit_file.
     """
-    path:           str
+    path: str
     content_base64: str
     commit_message: str
-    sha:            Optional[str] = None  # set if updating existing file
+    sha: Optional[str] = None  # set if updating existing file
 
 
 # ── Agent ─────────────────────────────────────────────────────────────────────
@@ -125,7 +134,7 @@ class CodeExecutionAgent(MCPAgent):
     """
 
     LANGUAGE = "python"
-    _STDLIB  = frozenset({
+    _STDLIB = frozenset({
         "os", "sys", "re", "json", "time", "datetime", "hashlib",
         "typing", "dataclasses", "enum", "functools", "itertools",
         "collections", "pathlib", "abc", "io", "math", "random",
@@ -137,13 +146,13 @@ class CodeExecutionAgent(MCPAgent):
         super().__init__("Code-Execution")
         self.llm = LLMClient()
 
-        self._test_suites: Dict[str, TestSuite]              = {}
+        self._test_suites: Dict[str, TestSuite] = {}
         self._iterations_history: Dict[str, List[CodeIteration]] = {}
 
         self.register_tool("generate_fix_and_create_pr", self.generate_fix_and_create_pr)
-        self.register_tool("generate_and_test_code",     self.generate_and_test_code)
-        self.register_tool("autonomous_debug_loop",      self.autonomous_debug_loop)
-        self.register_tool("verify_code_quality",        self.verify_code_quality)
+        self.register_tool("generate_and_test_code", self.generate_and_test_code)
+        self.register_tool("autonomous_debug_loop", self.autonomous_debug_loop)
+        self.register_tool("verify_code_quality", self.verify_code_quality)
         self.register_tool("get_verification_artifacts", self.get_verification_artifacts)
 
         logger.info("CodeExecutionAgent initialised — language=%s", self.LANGUAGE)
@@ -178,8 +187,61 @@ class CodeExecutionAgent(MCPAgent):
         for pattern in [r"```python\s*\n(.*?)```", r"```\s*\n(.*?)```"]:
             m = re.search(pattern, response, re.DOTALL)
             if m:
-                return m.group(1).strip()
-        return response.strip()
+                return self._sanitize_generated_code(m.group(1).strip())
+        return self._sanitize_generated_code(response.strip())
+
+    @staticmethod
+    def _sanitize_test_code(code: str) -> str:
+        """Remove or neuter patterns in test code that cause execution issues.
+
+        - time.sleep(N) with N > 1 is replaced with time.sleep(0) to prevent
+          tests from timing out (LLMs love generating sleep(300) for lockout tests)
+        - Removes server-starting calls (same as _sanitize_generated_code)
+        """
+        # Replace time.sleep(anything > 0) with time.sleep(0)
+        code = re.sub(
+            r'time\.sleep\s*\(\s*[\d.]+\s*\)',
+            'time.sleep(0)',
+            code,
+        )
+        # Also handle variable-based sleeps like time.sleep(LOCKOUT_TIME)
+        code = re.sub(
+            r'time\.sleep\s*\(\s*[A-Z_]+\s*\)',
+            'time.sleep(0)',
+            code,
+        )
+        return code
+
+    @staticmethod
+    def _sanitize_generated_code(code: str) -> str:
+        """Remove server-starting lines that block subprocess execution.
+
+        LLMs frequently generate app.run(), uvicorn.run(), serve() etc.
+        which bind a port and either block forever (hitting the execution
+        timeout) or crash with 'Address already in use' on repeated runs.
+        These lines are stripped so the code can be tested as a library.
+        """
+        cleaned_lines: list[str] = []
+        skip_block = False
+        for line in code.splitlines():
+            stripped = line.strip()
+            # Skip the if __name__ == '__main__' guard and its body
+            if re.match(r"^if\s+__name__\s*==\s*['\"]__main__['\"]\s*:", stripped):
+                skip_block = True
+                continue
+            if skip_block:
+                if line and not line[0].isspace():
+                    skip_block = False  # new top-level statement
+                else:
+                    continue
+            # Strip standalone server-start calls at any indentation
+            if re.match(
+                    r"^\s*(?:app\.run|uvicorn\.run|serve|httpd\.serve_forever)\s*\(",
+                    stripped,
+            ):
+                continue
+            cleaned_lines.append(line)
+        return "\n".join(cleaned_lines)
 
     def _extract_imports(self, code: str) -> List[str]:
         """Return top-level module names imported by the code."""
@@ -204,20 +266,37 @@ class CodeExecutionAgent(MCPAgent):
         return prefix.startswith("[claude error]") or prefix.startswith("[llm error]") \
             or prefix.startswith("[stub]") or prefix.startswith("[gitlab duo error]")
 
+    @staticmethod
+    def _is_fallback_code(code: str) -> bool:
+        """Return True if code is a placeholder fallback, not real generated code."""
+        stripped = code.strip()
+        # All lines are comments or blank
+        if all(l.strip().startswith("#") or not l.strip() for l in stripped.splitlines()):
+            return True
+        # Too short to be real code (just a comment stub)
+        if len(stripped) < 100 and "manual review required" in stripped.lower():
+            return True
+        return False
+
     def _quality_score(
             self,
             tests_passed: int,
-            tests_total:  int,
-            exec_ms:      float,
-            code_len:     int,
+            tests_total: int,
+            exec_ms: float,
+            code_len: int,
+            is_fallback: bool = False,
     ) -> Tuple[float, bool, float]:
-        if tests_total == 0:
+        # Fallback code should never be marked production-ready
+        if is_fallback or tests_total == 0:
             return 0.0, False, 0.0
-        pass_rate  = tests_passed / tests_total
+        pass_rate = tests_passed / tests_total
         perf_score = 1.0 if exec_ms < 1000 else 0.8
-        size_score = 1.0 if 20 <= code_len <= 2000 else 0.7
-        score      = (pass_rate * 0.7) + (perf_score * 0.2) + (size_score * 0.1)
-        ready      = tests_passed == tests_total and exec_ms < 5000 and code_len >= 10
+        size_score = 1.0 if 100 <= code_len <= 5000 else 0.7
+        score = (pass_rate * 0.7) + (perf_score * 0.2) + (size_score * 0.1)
+        ready = (tests_passed == tests_total
+                 and exec_ms < 5000
+                 and code_len >= 100
+                 and tests_total >= 2)
         confidence = min(pass_rate + (tests_total / 10 * 0.1), 1.0)
         return score, ready, confidence
 
@@ -233,40 +312,79 @@ class CodeExecutionAgent(MCPAgent):
             return None
 
         pip_map = {
-            "jwt":          "PyJWT",
-            "jose":         "python-jose",
+            "jwt": "PyJWT",
+            "jose": "python-jose",
             "cryptography": "cryptography",
-            "httpx":        "httpx",
-            "fastapi":      "fastapi",
-            "pydantic":     "pydantic",
-            "yaml":         "pyyaml",
-            "dotenv":       "python-dotenv",
-            "github":       "PyGithub",
-            "requests":     "requests",
-            "aiohttp":      "aiohttp",
-            "boto3":        "boto3",
+            "httpx": "httpx",
+            "fastapi": "fastapi",
+            "pydantic": "pydantic",
+            "yaml": "pyyaml",
+            "dotenv": "python-dotenv",
+            "github": "PyGithub",
+            "requests": "requests",
+            "aiohttp": "aiohttp",
+            "boto3": "boto3",
+            "flask": "flask",
+            "bcrypt": "bcrypt",
+            "sqlalchemy": "sqlalchemy",
+            "redis": "redis",
+            "celery": "celery",
+            "PIL": "Pillow",
+            "cv2": "opencv-python-headless",
+            "bs4": "beautifulsoup4",
+            "lxml": "lxml",
+            "passlib": "passlib",
         }
 
-        to_install = [pip_map.get(m, m) for m in modules]
-        logger.info("Installing deps: %s", to_install)
+        # Force critical security packages that are frequently used by generated code
+        to_install = []
+        if any(m in modules for m in ("jwt", "PyJWT")):
+            to_install.append("PyJWT")
+        if any(m in modules for m in ("bcrypt",)):
+            to_install.append("bcrypt")
+
+        # Add remaining dependencies
+        to_install.extend(pip_map.get(m, m) for m in modules if m not in ("jwt", "PyJWT", "bcrypt"))
+        to_install = list(dict.fromkeys(to_install))
+
+        if not to_install:
+            return None
+
+        logger.info("Installing dependencies: %s", to_install)
 
         try:
             process = await asyncio.create_subprocess_exec(
-                sys.executable, "-m", "pip", "install", "--quiet", *to_install,
+                sys.executable, "-m", "pip", "install",
+                "--quiet",
+                "--break-system-packages",          # Required in Docker / externally-managed environments
+                *to_install,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            _, stderr = await asyncio.wait_for(process.communicate(), timeout=30.0)
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=45.0)
+
             if process.returncode != 0:
-                return stderr.decode()[:300]
+                err = stderr.decode()[:500]
+                logger.error("Pip install FAILED: %s", err)
+
+                # Critical packages must succeed — otherwise we abort early
+                if any(pkg in ("bcrypt", "PyJWT") for pkg in to_install):
+                    logger.error("CRITICAL dependency install failed (bcrypt/PyJWT)")
+                    return f"CRITICAL: {err}"
+
+                return err
+
+            logger.info("Dependencies installed successfully")
             return None
+
         except Exception as exc:
+            logger.error("Pip install exception: %s", exc)
             return str(exc)
 
     async def _run(self, code: str, timeout: float = 10.0) -> Dict[str, Any]:
         """Execute Python code in an isolated subprocess with timeout."""
         start = datetime.now()
-        tmp   = None
+        tmp = None
         try:
             with tempfile.NamedTemporaryFile(
                     mode="w", suffix=".py", delete=False
@@ -285,25 +403,25 @@ class CodeExecutionAgent(MCPAgent):
                 )
                 ms = (datetime.now() - start).total_seconds() * 1000
                 return {
-                    "status":           ExecutionStatus.SUCCESS if proc.returncode == 0
-                                        else ExecutionStatus.FAILURE,
-                    "exit_code":        proc.returncode,
-                    "stdout":           stdout.decode(),
-                    "stderr":           stderr.decode(),
+                    "status": ExecutionStatus.SUCCESS if proc.returncode == 0
+                    else ExecutionStatus.FAILURE,
+                    "exit_code": proc.returncode,
+                    "stdout": stdout.decode(),
+                    "stderr": stderr.decode(),
                     "execution_time_ms": ms,
                 }
             except asyncio.TimeoutError:
                 proc.kill()
                 ms = (datetime.now() - start).total_seconds() * 1000
                 return {
-                    "status":           ExecutionStatus.TIMEOUT, "exit_code": -1,
-                    "stdout":           "", "stderr": f"Timeout ({timeout}s)",
+                    "status": ExecutionStatus.TIMEOUT, "exit_code": -1,
+                    "stdout": "", "stderr": f"Timeout ({timeout}s)",
                     "execution_time_ms": ms,
                 }
         except Exception as exc:
             return {
-                "status":           ExecutionStatus.FAILURE, "exit_code": 1,
-                "stdout":           "", "stderr": str(exc), "execution_time_ms": 0,
+                "status": ExecutionStatus.FAILURE, "exit_code": 1,
+                "stdout": "", "stderr": str(exc), "execution_time_ms": 0,
             }
         finally:
             if tmp and os.path.exists(tmp):
@@ -312,16 +430,10 @@ class CodeExecutionAgent(MCPAgent):
                 except OSError:
                     pass
 
-    # ── Test suite extraction ─────────────────────────────────────────────────
-
     @staticmethod
     def _extract_preamble(test_code: str) -> str:
         """Extract the top-level preamble (imports, constants, helpers) that
         appears *before* the first ``def test_*`` function.
-
-        Everything before the first test function is considered shared setup
-        code and will be prepended to every isolated test so that constants,
-        helper functions, and fixtures remain available.
         """
         preamble_lines: List[str] = []
         for line in test_code.splitlines(keepends=True):
@@ -334,11 +446,7 @@ class CodeExecutionAgent(MCPAgent):
     @staticmethod
     def _extract_interstitial(lines_between: List[str]) -> str:
         """Collect non-blank, non-indented lines that appear between two
-        ``def test_*`` blocks (helper functions, constants, etc.) and return
-        them as a block to prepend to the *next* test.
-
-        This prevents helper functions defined between tests from being
-        silently dropped.
+        ``def test_*`` blocks (helper functions, constants, etc.).
         """
         buf: List[str] = []
         inside_def = False
@@ -357,22 +465,15 @@ class CodeExecutionAgent(MCPAgent):
 
     def _split_test_functions(self, test_code: str) -> List[Tuple[str, str]]:
         """
-        Extract each test_* function individually, preserving the full
-        top-level preamble (imports, constants, helper functions) that
-        precedes the first test, as well as any helper functions defined
-        between test functions.
-
-        Returns list of (function_name, runnable_source) tuples.
-        Each returned source includes the full preamble so that isolated
-        execution does not produce NameError on shared helpers/constants.
+        Split test code into isolated executable test functions.
         """
         preamble = self._extract_preamble(test_code)
 
-        lines    = test_code.splitlines(keepends=True)
-        blocks:  List[Tuple[str, List[str]]] = []
+        lines = test_code.splitlines(keepends=True)
+        blocks: List[Tuple[str, List[str]]] = []
         current_body: Optional[List[str]] = None
         current_name = "test_unknown"
-        between: List[str] = []  # lines between test functions
+        between: List[str] = []
 
         for line in lines:
             if re.match(r"^def (test_\w+)\s*\(", line):
@@ -380,7 +481,6 @@ class CodeExecutionAgent(MCPAgent):
                     blocks.append((current_name, current_body))
                 name_m = re.match(r"^def (test_\w+)", line)
                 current_name = name_m.group(1) if name_m else "test_unknown"
-                # Prepend any interstitial helpers collected since the last test
                 interstitial = self._extract_interstitial(between)
                 between = []
                 current_body = []
@@ -406,6 +506,8 @@ class CodeExecutionAgent(MCPAgent):
         result = []
         for name, body_lines in blocks:
             body = "".join(body_lines)
+
+
             runnable = (
                 f"{preamble}"
                 f"{body}\n\n"
@@ -416,8 +518,10 @@ class CodeExecutionAgent(MCPAgent):
                 f"    print('FAILED: {name} -', e)\n"
                 f"    raise\n"
             )
+
             result.append((name, runnable))
         return result
+
 
     # ── Main Orchestrator-facing tool ─────────────────────────────────────────
 
@@ -425,13 +529,13 @@ class CodeExecutionAgent(MCPAgent):
     @metric_counter("code_execution")
     async def generate_fix_and_create_pr(
             self,
-            repo:            str,
-            goal:            str,
-            risks:           Optional[List]      = None,
-            classification:  Optional[Dict]      = None,
-            file_tree:       Optional[List[str]] = None,
-            github_token:    Optional[str]       = None,
-            max_debug_iter:  int                 = 2,
+            repo: str,
+            goal: str,
+            risks: Optional[List] = None,
+            classification: Optional[Dict] = None,
+            file_tree: Optional[List[str]] = None,
+            github_token: Optional[str] = None,
+            max_debug_iter: int = 2,
     ) -> Dict[str, Any]:
         """
         Primary tool called by Orchestrator.
@@ -457,12 +561,12 @@ class CodeExecutionAgent(MCPAgent):
             tests_passed:           bool
             quality_score:          float
             verification_artifact:  full artifact dict for UI
-            reasoning:              step trail for Observatory
+            reasoning:              step trail for Observatory (only if DEBUG_REASONING enabled)
         """
         reasoning: List[ReasoningStep] = []
-        risks      = risks or []
-        file_tree  = file_tree or []
-        task_type  = (classification or {}).get("task_type", "security_fix")
+        risks = risks or []
+        file_tree = file_tree or []
+        task_type = (classification or {}).get("task_type", "security_fix")
         complexity = (classification or {}).get("complexity", "medium")
 
         self._step(reasoning, "PR fix generation requested",
@@ -484,19 +588,19 @@ class CodeExecutionAgent(MCPAgent):
 
         strategic_prompt = f"""You are a security-focused Python engineer.
 
-Repository: {repo}
-Goal: {goal}
-Task type: {task_type} | Complexity: {complexity}
-{tree_line}
+    Repository: {repo}
+    Goal: {goal}
+    Task type: {task_type} | Complexity: {complexity}
+    {tree_line}
 
-Risks / issues to address:
-{risks_md}
+    Risks / issues to address:
+    {risks_md}
 
-Plan the fix in under 100 words:
-1. What Python module / function to write or patch
-2. Key security concerns to address
-3. Edge cases to handle
-"""
+    Plan the fix in under 100 words:
+    1. What Python module / function to write or patch
+    2. Key security concerns to address
+    3. Edge cases to handle
+    """
         try:
             plan_resp = await self.llm.chat(strategic_prompt)
             if is_invalid_response(plan_resp):
@@ -517,22 +621,36 @@ Plan the fix in under 100 words:
 
         gen_prompt = f"""Write Python code to fix the following issues in the repository '{repo}'.
 
-Goal: {goal}
+    Goal: {goal}
 
-Fix plan:
-{plan}
+    Fix plan:
+    {plan}
 
-Issues to address:
-{risks_md}
+    Issues to address:
+    {risks_md}
 
-RULES:
-1. Write complete, runnable Python 3 code
-2. Include docstrings
-3. Handle edge cases and exceptions
-4. Do NOT include test code here
-5. Use only stdlib or well-known packages (jwt → PyJWT, etc.)
-6. Output ONLY the fix code in a ```python block
-"""
+RULES (strictly follow):
+
+1. Write exactly 3-5 test functions named test_*
+2. Use only statements (without unittest)
+3. Each test is offline, register the tested user in each test.
+4. Compliance tests (successful_auth, registration):
+how to do it: print ('PASSED: test_name')
+5. Error tests (blocking, invalid IDs):
+- Be sure to try/except for a creative idea!
+- V except: print('SUBMITTED: test_name')
+   - V else: assert False, "An exception was expected, but none of them were raised"
+- DO NOT assume THAT nothing HAS PASSED except!
+6. No time.sleep(), no servers, no external import
+7. To lock/limit the speed according to the current time, do not sleep mode
+8. Output ONLY the test code to the `python block
+9. CRITICAL FOR CONFIGURATION: When simulating multiple failed attempts to trigger a lock or testing behavior after failures, you SHOULD catch exceptions during setup! Example:
+   for _ in the range(5):
+try:
+           auth.verify_password('u', 'wrong', h)
+except for the exception:
+           pass through
+    """
         try:
             code_resp = await self.llm.chat(gen_prompt)
             if self._is_code_response_invalid(code_resp):
@@ -544,9 +662,11 @@ RULES:
             logger.error("Code generation failed: %s", exc)
             fix_code = f'# Auto-generated fix for: {goal}\n# Manual review required\n'
 
+        code_is_fallback = self._is_fallback_code(fix_code)
         code_hash = self._hash(fix_code)
         self._step(reasoning, "GENERATION: Fix code generated",
-                   output_data={"code_hash": code_hash, "code_length": len(fix_code)})
+                   output_data={"code_hash": code_hash, "code_length": len(fix_code),
+                                "is_fallback": code_is_fallback})
 
         # ── GENERATION: write tests ───────────────────────────────────────────
         self._step(reasoning, "GENERATION: Writing test suite")
@@ -558,13 +678,20 @@ FIX CODE:
 
 GOAL BEING TESTED: {goal}
 
-RULES:
-1. Write 3-5 test functions named test_*
-2. Use assertions only (no unittest.TestCase)
-3. Each test must be self-contained
-4. Print "PASSED: <n>" on success
-5. Cover: happy path, edge cases, security constraints
-6. Output ONLY test code in a ```python block
+RULES (строго соблюдай, особенно пункты 4-5):
+1. Write exactly 3-5 test functions named test_*
+2. Use only assertions (no unittest)
+3. Each test self-contained, register test user inside every test
+4. Happy-path tests (successful_auth, registration, after_failed_attempts): 
+   в конце функции обязательно: print('PASSED: test_name')
+5. Error tests (lockout, invalid_credentials, empty_fields, failed_auth, rate_limiting):
+   - Обязательно используй try/except
+   - В except: print('PASSED: test_name')
+   - В else: assert False, 'Expected exception but none was raised'
+   - НЕ печатай PASSED нигде кроме except!
+6. No time.sleep(), no servers, no external imports
+7. For lockout/rate-limit — проверяй current time, не sleep
+8. Output ONLY test code in ```python block
 """
         try:
             test_resp = await self.llm.chat(test_prompt)
@@ -582,6 +709,9 @@ RULES:
         if dep_error:
             self._step(reasoning, "Dependency install warning",
                        output_data={"warning": dep_error[:200]})
+
+        # ── Sanitize test code before splitting ────────────────────────────
+        test_code = self._sanitize_test_code(test_code)
 
         # ── Split tests into isolated functions ───────────────────────────────
         test_functions = self._split_test_functions(test_code)
@@ -617,9 +747,9 @@ RULES:
         self._step(reasoning, "EXECUTION: Running tests and debug loop",
                    input_data={"tests_count": len(tests), "max_iter": max_debug_iter})
 
-        current_code  = fix_code
-        best_code     = fix_code
-        best_passed   = -1
+        current_code = fix_code
+        best_code = fix_code
+        best_passed = -1
         final_artifact: Optional[VerificationArtifact] = None
 
         final_iteration = 0
@@ -629,27 +759,28 @@ RULES:
 
             for test in tests:
                 full = f"{current_code}\n\n{test.test_code}"
-                tr   = await self._run(full)
-                ok   = tr["exit_code"] == 0
-                t_passed  += int(ok)
-                t_failed  += int(not ok)
+                tr = await self._run(full)
+                ok = tr["exit_code"] == 0
+                t_passed += int(ok)
+                t_failed += int(not ok)
                 total_test_ms += tr["execution_time_ms"]
-                test.passed            = ok
+                test.passed = ok
                 test.execution_time_ms = tr["execution_time_ms"]
-                test.stdout            = tr["stdout"]
-                test.stderr            = tr["stderr"]
-                test.error_message     = tr["stderr"] if not ok else None
+                test.stdout = tr["stdout"]
+                test.stderr = tr["stderr"]
+                test.error_message = tr["stderr"] if not ok else None
                 t_details.append({
-                    "test_id":          test.test_id,
-                    "passed":           ok,
+                    "test_id": test.test_id,
+                    "passed": ok,
                     "execution_time_ms": tr["execution_time_ms"],
-                    "output":           tr["stdout"][:200],
-                    "error":            tr["stderr"][:200] if not ok else "",
+                    "output": tr["stdout"][:200],
+                    "error": tr["stderr"][:200] if not ok else "",
                 })
 
             # Use aggregate test execution time for quality score (issue #14)
             score, ready, conf = self._quality_score(
-                t_passed, len(tests), total_test_ms, len(current_code)
+                t_passed, len(tests), total_test_ms, len(current_code),
+                is_fallback=code_is_fallback,
             )
 
             # Also run bare code for stdout/stderr capture in artifact
@@ -678,50 +809,75 @@ RULES:
                 reasoning,
                 f"EXECUTION iter {iteration}: {t_passed}/{len(tests)} tests passed",
                 output_data={
-                    "iteration":      iteration,
-                    "tests_passed":   t_passed,
-                    "tests_failed":   t_failed,
-                    "quality_score":  round(score, 2),
+                    "iteration": iteration,
+                    "tests_passed": t_passed,
+                    "tests_failed": t_failed,
+                    "quality_score": round(score, 2),
                     "production_ready": ready,
                 },
             )
 
             if t_passed > best_passed:
                 best_passed = t_passed
-                best_code   = current_code
+                best_code = current_code
 
             final_iteration = iteration
             if ready or iteration == max_debug_iter:
                 break
 
             # ── REFLECTION: generate fix for failures ─────────────────────────
+            # Filter out timeout errors - they indicate test design issues
+            # (e.g. time.sleep), not code bugs the LLM can fix
             failed_errors = "\n".join(
                 f"{d['test_id']}: {d['error']}"
-                for d in t_details if not d["passed"]
+                for d in t_details
+                if not d["passed"] and "timeout" not in d.get("error", "").lower()
             )
+
+            # Detect infrastructure errors that the LLM cannot fix
+            infra_patterns = [
+                "address already in use", "port 5000", "port 5001",
+                "port 8000", "port 8080", "bind()",
+                "no module named", "modulenotfounderror",
+                "permission denied", "errno 13",
+            ]
+            errors_lower = failed_errors.lower()
+            if any(p in errors_lower for p in infra_patterns):
+                logger.warning(
+                    "Infrastructure error detected (iter %d), re-sanitizing code",
+                    iteration,
+                )
+                current_code = self._sanitize_generated_code(current_code)
+                self._step(
+                    reasoning,
+                    f"REFLECTION iter {iteration}: infrastructure error, re-sanitized code",
+                    output_data={"infra_error": True},
+                )
+                continue
+
             debug_prompt = f"""Fix this Python code to pass all tests.
 
-CURRENT CODE:
-{current_code}
+    CURRENT CODE:
+    {current_code}
 
-FAILED TEST ERRORS:
-{failed_errors}
+    FAILED TEST ERRORS:
+    {failed_errors}
 
-ORIGINAL GOAL: {goal}
+    ORIGINAL GOAL: {goal}
 
-RULES:
-1. Preserve all working functionality
-2. Fix only what is broken
-3. Keep same module structure
-4. Output ONLY fixed code in ```python block
-"""
+    RULES:
+    1. Preserve all working functionality
+    2. Fix only what is broken
+    3. Keep same module structure
+    4. Output ONLY fixed code in ```python block
+    """
             try:
                 fix_resp = await self.llm.chat(debug_prompt)
                 if self._is_code_response_invalid(fix_resp):
                     logger.warning("Debug LLM response invalid, stopping loop")
                     break
                 current_code = self._extract_code_block(fix_resp)
-                dep_error    = await self._install_deps(current_code)
+                dep_error = await self._install_deps(current_code)
                 self._step(reasoning, f"REFLECTION iter {iteration}: new fix generated",
                            output_data={"new_hash": self._hash(current_code)})
             except Exception as exc:
@@ -729,7 +885,7 @@ RULES:
                 break
 
         # ── Build patch_files for Orchestrator GitHub commit ──────────────────
-        filename   = self._suggest_filename(goal, task_type)
+        filename = self._suggest_filename(goal, task_type)
         b64_content = base64.b64encode(best_code.encode()).decode()
 
         patch_files: List[Dict] = [asdict(PatchFile(
@@ -740,17 +896,17 @@ RULES:
         ))]
 
         code_diff = (
-            f"--- a/{filename}\n"
-            f"+++ b/{filename}\n"
-            f"@@ Generated fix @@\n"
-            + "\n".join(f"+{line}" for line in best_code.splitlines()[:40])
+                f"--- a/{filename}\n"
+                f"+++ b/{filename}\n"
+                f"@@ Generated fix @@\n"
+                + "\n".join(f"+{line}" for line in best_code.splitlines()[:40])
         )
 
         iterations_list = self._iterations_history.get(session_id, [])
         if final_artifact:
             # Derive test-based status: SUCCESS only when all tests pass
             iter_status = ExecutionStatus.SUCCESS if best_passed == len(tests) \
-                          else ExecutionStatus.FAILURE
+                else ExecutionStatus.FAILURE
             iterations_list.append(CodeIteration(
                 iteration_number=final_iteration + 1,
                 timestamp=datetime.now(timezone.utc).isoformat(),
@@ -769,11 +925,11 @@ RULES:
             reasoning, "PR patch prepared",
             output_data={
                 "patch_files_count": len(patch_files),
-                "filename":          filename,
-                "tests_passed":      best_passed,
-                "tests_total":       len(tests),
-                "production_ready":  (final_artifact.production_ready
-                                      if final_artifact else False),
+                "filename": filename,
+                "tests_passed": best_passed,
+                "tests_total": len(tests),
+                "production_ready": (final_artifact.production_ready
+                                     if final_artifact else False),
             },
         )
 
@@ -783,39 +939,48 @@ RULES:
             final_artifact.production_ready if final_artifact else False,
         )
 
-        return {
-            "patch_files":          patch_files,
-            "code_diff":            code_diff,
-            "tests_passed":         best_passed == len(tests),
-            "quality_score":        final_artifact.quality_score if final_artifact else 0.0,
+        result = {
+            "patch_files": patch_files,
+            "code_diff": code_diff,
+            "tests_passed": best_passed == len(tests) and not code_is_fallback,
+            "quality_score": final_artifact.quality_score if final_artifact else 0.0,
             "verification_artifact": asdict(final_artifact) if final_artifact else None,
-            "session_id":           session_id,
-            "code":                 best_code,
-            "code_hash":            self._hash(best_code),
+            "session_id": session_id,
+            "code_hash": self._hash(best_code),
             "test_suite": {
-                "suite_id":     suite.suite_id,
-                "tests_count":  len(tests),
+                "suite_id": suite.suite_id,
+                "tests_count": len(tests),
                 "tests_passed": best_passed,
                 "tests_failed": len(tests) - best_passed,
             },
             "quality_metrics": {
-                "quality_score":   final_artifact.quality_score if final_artifact else 0.0,
-                "production_ready": final_artifact.production_ready if final_artifact else False,
-                "confidence":      final_artifact.confidence if final_artifact else 0.0,
+                "quality_score": final_artifact.quality_score if final_artifact else 0.0,
+                "production_ready": (final_artifact.production_ready if final_artifact else False)
+                                    and not code_is_fallback,
+                "confidence": final_artifact.confidence if final_artifact else 0.0,
             },
-            "auth0_token_vault": False,
-            "reasoning": normalize_reasoning(reasoning),
+            "fallback_used": code_is_fallback,
+            "auth0_token_vault": bool(github_token) or bool(os.getenv("AUTH0_DOMAIN")),
         }
+
+        # Include raw code only in debug mode (avoids duplicate data in production)
+        if DEBUG_INCLUDE_RAW_CODE:
+            result["code"] = best_code
+
+        if DEBUG_REASONING:
+            result["reasoning"] = normalize_reasoning(reasoning)
+
+        return result
 
     def _suggest_filename(self, goal: str, task_type: str) -> str:
         """Suggest a reasonable file path for the generated fix."""
         slug = re.sub(r"[^\w]", "_", goal.lower())[:40].strip("_")
         prefix_map = {
-            "security_fix":      "src/security",
+            "security_fix": "src/security",
             "dependency_update": "requirements",
-            "api_development":   "src/api",
-            "bug":               "src",
-            "feature":           "src",
+            "api_development": "src/api",
+            "bug": "src",
+            "feature": "src",
         }
         prefix = prefix_map.get(task_type, "src")
         return f"{prefix}/{slug}_fix.py"
@@ -827,11 +992,11 @@ RULES:
     async def generate_and_test_code(
             self,
             requirement: str,
-            context:     Optional[str] = None,
-            language:    Optional[str] = None,
+            context: Optional[str] = None,
+            language: Optional[str] = None,
     ) -> Dict[str, Any]:
 
-        reasoning:  List[ReasoningStep] = []
+        reasoning: List[ReasoningStep] = []
         session_id = self._session_id()
 
         if language and language.lower() not in ("python", "py", "python3"):
@@ -861,17 +1026,17 @@ RULES:
                    input_data={"thinking_level": ThinkingLevel.GENERATION.value},
                    output_data={"plan_length": len(plan)})
 
-        ctx_block  = f"\nContext: {context}" if context else ""
+        ctx_block = f"\nContext: {context}" if context else ""
         gen_prompt = f"""Generate Python code for:
-{requirement}
-{ctx_block}
-Plan: {plan}
+    {requirement}
+    {ctx_block}
+    Plan: {plan}
 
-RULES: complete runnable Python, docstrings, edge cases, NO tests here.
-Output ONLY code in ```python block."""
+    RULES: complete runnable Python, docstrings, edge cases, NO tests here.
+    Output ONLY code in ```python block."""
 
         try:
-            code_resp      = await self.llm.chat(gen_prompt)
+            code_resp = await self.llm.chat(gen_prompt)
             if self._is_code_response_invalid(code_resp):
                 logger.warning("Code generation LLM response invalid, using fallback")
                 generated_code = (
@@ -887,11 +1052,13 @@ Output ONLY code in ```python block."""
                 f'# Manual review required\n'
             )
 
+        code_is_fallback = self._is_fallback_code(generated_code)
         code_hash = self._hash(generated_code)
 
         self._step(reasoning, "GENERATION: Creating executable test suite",
                    input_data={"code_hash": code_hash},
-                   output_data={"code_length": len(generated_code)})
+                   output_data={"code_length": len(generated_code),
+                                "is_fallback": code_is_fallback})
 
         try:
             test_resp = await self.llm.chat(
@@ -911,12 +1078,12 @@ Output ONLY code in ```python block."""
 
         test_functions = self._split_test_functions(test_code)
         tests = [
-            ExecutableTest(
-                test_id=f"test_{i + 1}", test_code=body,
-                description=name, expected_behavior="pass assertions",
-            )
-            for i, (name, body) in enumerate(test_functions[:5])
-        ] or [ExecutableTest(
+                    ExecutableTest(
+                        test_id=f"test_{i + 1}", test_code=body,
+                        description=name, expected_behavior="pass assertions",
+                    )
+                    for i, (name, body) in enumerate(test_functions[:5])
+                ] or [ExecutableTest(
             test_id="test_fallback",
             test_code="assert True\nprint('PASSED: test_fallback')\n",
             description="fallback", expected_behavior="basic",
@@ -931,10 +1098,10 @@ Output ONLY code in ```python block."""
                    input_data={"tests_count": len(tests)},
                    output_data={"suite_id": suite.suite_id})
 
-        exec_result         = await self._run(generated_code)
-        t_passed, t_failed  = 0, 0
+        exec_result = await self._run(generated_code)
+        t_passed, t_failed = 0, 0
         t_details: List[Dict] = []
-        total_test_ms       = 0.0
+        total_test_ms = 0.0
 
         self._step(reasoning, "EXECUTION: Running test suite",
                    input_data={"code_status": exec_result["status"].value},
@@ -942,20 +1109,20 @@ Output ONLY code in ```python block."""
                                 "execution_time_ms": exec_result["execution_time_ms"]})
 
         for test in tests:
-            tr  = await self._run(f"{generated_code}\n\n{test.test_code}")
-            ok  = tr["exit_code"] == 0
-            t_passed  += int(ok)
-            t_failed  += int(not ok)
+            tr = await self._run(f"{generated_code}\n\n{test.test_code}")
+            ok = tr["exit_code"] == 0
+            t_passed += int(ok)
+            t_failed += int(not ok)
             total_test_ms += tr["execution_time_ms"]
-            test.passed            = ok
+            test.passed = ok
             test.execution_time_ms = tr["execution_time_ms"]
-            test.stdout            = tr["stdout"]
-            test.stderr            = tr["stderr"]
-            test.error_message     = tr["stderr"] if not ok else None
+            test.stdout = tr["stdout"]
+            test.stderr = tr["stderr"]
+            test.error_message = tr["stderr"] if not ok else None
             t_details.append({
-                "test_id":          test.test_id, "passed": ok,
+                "test_id": test.test_id, "passed": ok,
                 "execution_time_ms": tr["execution_time_ms"],
-                "output":           tr["stdout"][:200],
+                "output": tr["stdout"][:200],
             })
 
         self._step(reasoning, "VERIFICATION: Analysing results",
@@ -963,7 +1130,8 @@ Output ONLY code in ```python block."""
                    output_data={"tests_passed": t_passed, "tests_failed": t_failed})
 
         score, ready, conf = self._quality_score(
-            t_passed, len(tests), total_test_ms, len(generated_code)
+            t_passed, len(tests), total_test_ms, len(generated_code),
+            is_fallback=code_is_fallback,
         )
         artifact = VerificationArtifact(
             artifact_id=f"artifact_{session_id}",
@@ -980,7 +1148,7 @@ Output ONLY code in ```python block."""
 
         # Derive status from test results, not bare-code execution
         iter_status = ExecutionStatus.SUCCESS if t_passed == len(tests) \
-                      else ExecutionStatus.FAILURE
+            else ExecutionStatus.FAILURE
         iteration = CodeIteration(
             iteration_number=1, timestamp=datetime.now(timezone.utc).isoformat(),
             code=generated_code, code_hash=code_hash,
@@ -1002,24 +1170,32 @@ Output ONLY code in ```python block."""
             session_id, t_passed, len(tests), ready,
         )
 
-        return {
-            "session_id":  session_id,
-            "code":        generated_code,
-            "code_hash":   code_hash,
+        result = {
+            "session_id": session_id,
+            "code_hash": code_hash,
             "verification_artifact": asdict(artifact),
             "test_suite": {
-                "suite_id":     suite.suite_id,
-                "tests_count":  len(tests),
+                "suite_id": suite.suite_id,
+                "tests_count": len(tests),
                 "tests_passed": t_passed,
                 "tests_failed": t_failed,
             },
             "quality_metrics": {
-                "quality_score":   score,
-                "production_ready": ready,
-                "confidence":      conf,
+                "quality_score": score,
+                "production_ready": ready and not code_is_fallback,
+                "confidence": conf,
             },
-            "reasoning": normalize_reasoning(reasoning),
+            "fallback_used": code_is_fallback,
         }
+
+        # Include raw code only in debug mode (avoids duplicate data in production)
+        if DEBUG_INCLUDE_RAW_CODE:
+            result["code"] = generated_code
+
+        if DEBUG_REASONING:
+            result["reasoning"] = normalize_reasoning(reasoning)
+
+        return result
 
     # ── autonomous_debug_loop ─────────────────────────────────────────────────
 
@@ -1035,8 +1211,7 @@ Output ONLY code in ```python block."""
 
         iterations = self._iterations_history.get(session_id, [])
         if not iterations:
-            return {"error": "No session found", "session_id": session_id,
-                    "reasoning": normalize_reasoning(reasoning)}
+            return {"error": "No session found", "session_id": session_id}
 
         last = iterations[-1]
 
@@ -1044,15 +1219,14 @@ Output ONLY code in ```python block."""
         # stable even after code mutations change the hash between iterations
         suite = self._test_suites.get(session_id)
         if not suite:
-            return {"error": "No test suite found", "session_id": session_id,
-                    "reasoning": normalize_reasoning(reasoning)}
+            return {"error": "No test suite found", "session_id": session_id}
 
         self._step(reasoning, "Retrieved test suite",
                    input_data={"iterations_count": len(iterations)},
                    output_data={"suite_id": suite.suite_id, "tests_count": len(suite.tests)})
 
         current_code = last.code
-        iter_num     = len(iterations) + 1
+        iter_num = len(iterations) + 1
 
         for i in range(max_iterations):
             if (last.status == ExecutionStatus.SUCCESS
@@ -1081,16 +1255,16 @@ Output ONLY code in ```python block."""
                 logger.error("Debug attempt %d failed: %s", i, exc)
                 break
 
-            code_hash     = self._hash(current_code)
+            code_hash = self._hash(current_code)
             t_passed, t_failed = 0, 0
             t_details: List[Dict] = []
             total_test_ms = 0.0
 
             for test in suite.tests:
-                tr  = await self._run(f"{current_code}\n\n{test.test_code}")
-                ok  = tr["exit_code"] == 0
-                t_passed  += int(ok)
-                t_failed  += int(not ok)
+                tr = await self._run(f"{current_code}\n\n{test.test_code}")
+                ok = tr["exit_code"] == 0
+                t_passed += int(ok)
+                t_failed += int(not ok)
                 total_test_ms += tr["execution_time_ms"]
                 test.passed = ok
                 t_details.append({"test_id": test.test_id, "passed": ok,
@@ -1113,7 +1287,7 @@ Output ONLY code in ```python block."""
 
             # Derive status from test results, not bare-code execution
             debug_status = ExecutionStatus.SUCCESS if t_failed == 0 \
-                           else ExecutionStatus.FAILURE
+                else ExecutionStatus.FAILURE
             new_iter = CodeIteration(
                 iteration_number=iter_num, timestamp=datetime.now(timezone.utc).isoformat(),
                 code=current_code, code_hash=code_hash,
@@ -1128,31 +1302,35 @@ Output ONLY code in ```python block."""
             self._step(reasoning, f"Debug iteration {iter_num}: {t_passed}/{len(suite.tests)} passed",
                        output_data={"tests_passed": t_passed, "quality_score": round(score, 2)})
 
-            last     = new_iter
+            last = new_iter
             iter_num += 1
             if t_passed == len(suite.tests):
                 break
 
-        final   = iterations[-1]
+        final = iterations[-1]
         final_a = final.verification_artifact
         self._step(reasoning, "Debug loop completed",
                    output_data={"total_iterations": len(iterations),
                                 "final_status": final.status.value,
                                 "tests_passed": final_a.tests_passed if final_a else 0})
 
-        return {
-            "session_id":       session_id,
+        result = {
+            "session_id": session_id,
             "total_iterations": len(iterations),
-            "final_code":       final.code,
-            "final_artifact":   asdict(final_a) if final_a else None,
+            "final_code": final.code,
+            "final_artifact": asdict(final_a) if final_a else None,
             "all_iterations": [
-                {"iteration":   it.iteration_number, "status": it.status.value,
+                {"iteration": it.iteration_number, "status": it.status.value,
                  "tests_passed": it.verification_artifact.tests_passed
                  if it.verification_artifact else 0}
                 for it in iterations
             ],
-            "reasoning": normalize_reasoning(reasoning),
         }
+
+        if DEBUG_REASONING:
+            result["reasoning"] = normalize_reasoning(reasoning)
+
+        return result
 
     # ── verify_code_quality ───────────────────────────────────────────────────
 
@@ -1162,10 +1340,10 @@ Output ONLY code in ```python block."""
         reasoning: List[ReasoningStep] = []
         self._step(reasoning, "Code quality check", input_data={"code_length": len(code)})
 
-        lines   = [l for l in code.split("\n") if l.strip()]
+        lines = [l for l in code.split("\n") if l.strip()]
         has_fns = bool(re.search(r"def \w+\(", code))
         has_docs = bool(re.search(r'""".*?"""', code, re.DOTALL))
-        has_bad  = bool(re.search(r"(eval|exec|__import__|compile)\(", code))
+        has_bad = bool(re.search(r"(eval|exec|__import__|compile)\(", code))
         det_score = (0.4 if has_fns else 0) + (0.3 if has_docs else 0) + (0.3 if not has_bad else 0)
 
         try:
@@ -1180,15 +1358,19 @@ Output ONLY code in ```python block."""
         self._step(reasoning, "Quality analysis complete",
                    output_data={"deterministic_score": det_score, "has_forbidden": has_bad})
 
-        return {
+        result = {
             "code_length": len(code), "code_lines": len(lines),
             "deterministic_checks": {
                 "has_functions": has_fns, "has_docstrings": has_docs,
                 "has_forbidden_imports": has_bad, "score": det_score,
             },
             "llm_analysis": report,
-            "reasoning":    normalize_reasoning(reasoning),
         }
+
+        if DEBUG_REASONING:
+            result["reasoning"] = normalize_reasoning(reasoning)
+
+        return result
 
     # ── get_verification_artifacts ────────────────────────────────────────────
 
@@ -1198,16 +1380,21 @@ Output ONLY code in ```python block."""
         reasoning: List[ReasoningStep] = []
         self._step(reasoning, "Fetching verification artifacts",
                    input_data={"session_id": session_id})
-        iters     = self._iterations_history.get(session_id, [])
+        iters = self._iterations_history.get(session_id, [])
         artifacts = [asdict(it.verification_artifact)
                      for it in iters if it.verification_artifact]
-        return {
-            "session_id":       session_id,
+
+        result = {
+            "session_id": session_id,
             "total_iterations": len(iters),
-            "artifacts":        artifacts,
-            "artifact_types":   list({a["artifact_type"] for a in artifacts}),
-            "reasoning":        normalize_reasoning(reasoning),
+            "artifacts": artifacts,
+            "artifact_types": list({a["artifact_type"] for a in artifacts}),
         }
+
+        if DEBUG_REASONING:
+            result["reasoning"] = normalize_reasoning(reasoning)
+
+        return result
 
 
 # ── Health check ──────────────────────────────────────────────────────────────
@@ -1215,7 +1402,7 @@ Output ONLY code in ```python block."""
 def get_agent_status() -> Dict[str, Any]:
     return {
         "agent_name": "code_execution",
-        "status":     "HEALTHY",
+        "status": "HEALTHY",
         "capabilities": [
             "generate_fix_and_create_pr",
             "generate_and_test_code",
@@ -1232,9 +1419,9 @@ def get_agent_status() -> Dict[str, Any]:
             "patch_file_generation",
             "base64_github_ready",
         ],
-        "language":          "python",
+        "language": "python",
         "auth0_token_vault": False,
-        "agent_type":        "autonomous",
-        "llm_powered":       True,
-        "timestamp":         datetime.now(timezone.utc).isoformat(),
+        "agent_type": "autonomous",
+        "llm_powered": True,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
