@@ -1,1317 +1,1422 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8"/>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>Authorized DevOps Agent — Auth0 Observatory</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Syne:wght@600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --auth0-orange:  #EB5424;
-            --auth0-orange2: #FF6B35;
-            --auth0-navy:    #0C1A2E;
-            --bg-dark:       #070A0F;
-            --surface:       #0F1520;
-            --surface-mid:   #161E2E;
-            --surface-light: #1E2A3E;
-            --text-main:     #E8EDF5;
-            --text-dim:      #6B7A99;
-            --border:        #1E2D45;
-            --border-bright: #2A3F5E;
-            --success:       #22C55E;
-            --warning:       #F59E0B;
-            --error:         #EF4444;
-            --info:          #38BDF8;
-            --critical:      #FF3B30;
-            --vault:         #A78BFA;
-            --demo:          #8B5CF6;
-            --code:          #10B981;
-        }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Authorized DevOps Agent — Auth0 Observatory</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Syne:wght@600;700;800&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --orange:        #EB5424;
+  --orange2:       #FF6B35;
+  --navy:          #0C1A2E;
+  --bg:            #070A0F;
+  --surface:       #0F1520;
+  --surface-mid:   #161E2E;
+  --surface-light: #1E2A3E;
+  --text:          #E8EDF5;
+  --text-dim:      #6B7A99;
+  --text-muted:    #3D4A62;
+  --border:        #1E2D45;
+  --border-b:      #2A3F5E;
+  --green:         #22C55E;
+  --green-dim:     #22C55E18;
+  --yellow:        #F59E0B;
+  --yellow-dim:    #F59E0B18;
+  --red:           #EF4444;
+  --red-dim:       #EF444418;
+  --blue:          #38BDF8;
+  --blue-dim:      #38BDF818;
+  --critical:      #FF3B30;
+  --vault:         #A78BFA;
+  --vault-dim:     #A78BFA15;
+  --demo:          #8B5CF6;
+  --code:          #10B981;
+  --code-dim:      #10B98115;
+}
 
-        * { box-sizing: border-box; margin: 0; padding: 0; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
 
-        body {
-            font-family: 'Inter', sans-serif;
-            background: var(--bg-dark);
-            color: var(--text-main);
-            min-height: 100vh;
-            padding: 20px;
-            background-image:
-                radial-gradient(ellipse 80% 50% at 50% -20%, rgba(235,84,36,0.07) 0%, transparent 60%),
-                radial-gradient(ellipse 40% 30% at 90% 10%, rgba(167,139,250,0.05) 0%, transparent 50%);
-        }
+body {
+  font-family: 'Inter', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(235,84,36,0.06) 0%, transparent 60%),
+    radial-gradient(ellipse 40% 30% at 90% 10%, rgba(167,139,250,0.04) 0%, transparent 50%);
+}
 
-        /* ── HEADER ── */
-        .header {
-            max-width: 1440px;
-            margin: 0 auto 24px;
-            padding: 20px 28px;
-            background: linear-gradient(135deg, var(--surface), var(--surface-mid));
-            border-radius: 14px;
-            border: 1px solid var(--border);
-            border-left: 4px solid var(--auth0-orange);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 20px;
-        }
+/* ─── HEADER ─────────────────────────────── */
+.header {
+  padding: 0 24px;
+  height: 68px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  border-left: 4px solid var(--orange);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 2px 24px rgba(0,0,0,0.5);
+}
 
-        .header-left { display: flex; align-items: center; gap: 16px; }
+.header-left { display: flex; align-items: center; gap: 16px; }
 
-        .logo-mark {
-            width: 48px; height: 48px;
-            background: linear-gradient(135deg, var(--auth0-orange), var(--auth0-orange2));
-            border-radius: 12px;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 24px;
-            box-shadow: 0 0 20px rgba(235,84,36,0.3);
-            flex-shrink: 0;
-        }
+.logo {
+  width: 44px; height: 44px;
+  background: linear-gradient(135deg, var(--orange), var(--orange2));
+  border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px;
+  box-shadow: 0 0 20px rgba(235,84,36,0.35);
+  flex-shrink: 0;
+}
 
-        .header-title h1 {
-            font-family: 'Syne', sans-serif;
-            font-size: 22px;
-            font-weight: 800;
-            letter-spacing: -0.3px;
-            color: var(--text-main);
-        }
+.header-title h1 {
+  font-family: 'Syne', sans-serif;
+  font-size: 20px; font-weight: 800;
+  letter-spacing: -0.3px;
+}
 
-        .header-title .subtitle {
-            font-size: 13px;
-            color: var(--text-dim);
-            margin-top: 3px;
-            display: flex; align-items: center; gap: 8px;
-        }
+.header-subtitle {
+  font-size: 12px; color: var(--text-dim);
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 2px;
+}
 
-        .vault-pill {
-            display: inline-flex; align-items: center; gap: 5px;
-            padding: 3px 9px;
-            background: rgba(167,139,250,0.12);
-            border: 1px solid rgba(167,139,250,0.3);
-            border-radius: 20px;
-            font-size: 11px;
-            font-weight: 600;
-            color: var(--vault);
-            font-family: 'JetBrains Mono', monospace;
-        }
+.vault-pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 8px;
+  background: var(--vault-dim);
+  border: 1px solid rgba(167,139,250,0.3);
+  border-radius: 20px;
+  font-size: 11px; font-weight: 600; color: var(--vault);
+  font-family: 'JetBrains Mono', monospace;
+}
 
-        .vault-dot {
-            width: 6px; height: 6px;
-            border-radius: 50%;
-            background: var(--vault);
-            box-shadow: 0 0 6px var(--vault);
-            animation: vaultpulse 2s ease-in-out infinite;
-        }
+.vault-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--vault);
+  box-shadow: 0 0 6px var(--vault);
+  animation: vaultpulse 2s ease-in-out infinite;
+}
 
-        @keyframes vaultpulse {
-            0%,100% { opacity: 1; box-shadow: 0 0 6px var(--vault); }
-            50% { opacity: 0.6; box-shadow: 0 0 12px var(--vault); }
-        }
+@keyframes vaultpulse {
+  0%,100% { opacity: 1; box-shadow: 0 0 6px var(--vault); }
+  50% { opacity: 0.6; box-shadow: 0 0 14px var(--vault); }
+}
 
-        .header-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.header-actions { display: flex; align-items: center; gap: 8px; }
 
-        /* ── BADGES ── */
-        .mode-badge {
-            padding: 6px 12px;
-            border-radius: 6px;
-            font-size: 12px; font-weight: 600;
-            display: none; align-items: center; gap: 6px;
-            font-family: 'JetBrains Mono', monospace;
-        }
-        .mode-badge.demo {
-            background: rgba(139,92,246,0.15);
-            border: 1px solid var(--demo);
-            color: var(--demo);
-        }
-        .mode-badge.live {
-            background: rgba(34,197,94,0.12);
-            border: 1px solid var(--success);
-            color: var(--success);
-        }
-        #tokenVaultBadge {
-            display: none;
-            padding: 6px 12px;
-            background: rgba(167,139,250,0.12);
-            border: 1px solid rgba(167,139,250,0.4);
-            border-radius: 6px;
-            font-size: 12px; font-weight: 600;
-            color: var(--vault);
-            align-items: center; gap: 6px;
-            font-family: 'JetBrains Mono', monospace;
-        }
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 16px; border-radius: 8px; border: none;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: all 0.18s;
+  white-space: nowrap;
+}
 
-        /* ── BUTTONS ── */
-        .btn {
-            padding: 10px 18px;
-            border-radius: 8px; border: none;
-            font-weight: 600; font-size: 13px;
-            cursor: pointer;
-            transition: all 0.18s;
-            display: inline-flex; align-items: center; gap: 7px;
-            font-family: 'Inter', sans-serif;
-        }
-        .btn-primary {
-            background: linear-gradient(135deg, var(--auth0-orange), var(--auth0-orange2));
-            color: white;
-            box-shadow: 0 2px 12px rgba(235,84,36,0.3);
-        }
-        .btn-primary:hover:not(:disabled) {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 20px rgba(235,84,36,0.45);
-        }
-        .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
-        .btn-secondary {
-            background: var(--surface-light);
-            color: var(--text-main);
-            border: 1px solid var(--border-bright);
-        }
-        .btn-secondary:hover { background: var(--surface-mid); border-color: var(--auth0-orange); }
-        .btn-demo {
-            background: rgba(139,92,246,0.15);
-            color: var(--demo);
-            border: 1px solid rgba(139,92,246,0.4);
-        }
-        .btn-demo:hover { background: rgba(139,92,246,0.25); }
+.btn-ghost-demo {
+  background: rgba(139,92,246,0.12);
+  border: 1.5px solid rgba(139,92,246,0.4);
+  color: var(--demo);
+}
+.btn-ghost-demo:hover { background: rgba(139,92,246,0.22); }
+.btn-ghost-demo.active { box-shadow: 0 0 14px rgba(139,92,246,0.3); }
 
-        /* ── LAYOUT ── */
-        .grid {
-            max-width: 1440px;
-            margin: 0 auto;
-            display: grid;
-            grid-template-columns: 360px 1fr;
-            gap: 20px;
-        }
-        @media (max-width: 1100px) { .grid { grid-template-columns: 1fr; } }
+.btn-vault {
+  background: var(--vault-dim);
+  border: 1.5px solid rgba(167,139,250,0.4);
+  color: var(--vault);
+}
+.btn-vault:hover { background: rgba(167,139,250,0.18); }
 
-        .left-col { display: flex; flex-direction: column; gap: 16px; }
-        .right-col { display: flex; flex-direction: column; gap: 16px; }
+.btn-secondary {
+  background: var(--surface-light);
+  border: 1.5px solid var(--border-b);
+  color: var(--text);
+}
+.btn-secondary:hover { border-color: var(--orange); }
 
-        /* ── CARDS ── */
-        .card {
-            background: var(--surface);
-            border-radius: 12px;
-            padding: 22px;
-            border: 1px solid var(--border);
-        }
-        .card-title {
-            font-family: 'Syne', sans-serif;
-            font-size: 15px; font-weight: 700;
-            margin-bottom: 18px;
-            display: flex; align-items: center; gap: 9px;
-            color: var(--text-main);
-        }
-        .card-title-icon {
-            width: 30px; height: 30px;
-            border-radius: 7px;
-            background: var(--surface-light);
-            display: flex; align-items: center; justify-content: center;
-            font-size: 15px;
-        }
+.btn-run-demo {
+  background: var(--surface-light);
+  border: 1.5px solid rgba(139,92,246,0.5);
+  color: var(--demo);
+}
+.btn-run-demo:hover { background: rgba(139,92,246,0.12); }
 
-        /* ── FORM ── */
-        .input-group { margin-bottom: 14px; }
-        .input-label {
-            display: block; font-size: 12px;
-            color: var(--text-dim); margin-bottom: 6px;
-            font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;
-        }
-        .input {
-            width: 100%;
-            padding: 10px 13px;
-            background: var(--surface-light);
-            border: 1px solid var(--border-bright);
-            border-radius: 7px;
-            color: var(--text-main);
-            font-size: 14px;
-            font-family: 'Inter', sans-serif;
-            transition: border-color 0.15s;
-        }
-        .input:focus { outline: none; border-color: var(--auth0-orange); }
-        .input::placeholder { color: var(--text-dim); }
-        textarea.input { resize: vertical; min-height: 80px; line-height: 1.5; }
+.btn-primary {
+  background: linear-gradient(135deg, var(--orange), var(--orange2));
+  color: white;
+  box-shadow: 0 2px 14px rgba(235,84,36,0.35);
+}
+.btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 22px rgba(235,84,36,0.5); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
-        /* ── TOKEN VAULT STATUS BOX ── */
-        .vault-box {
-            background: rgba(167,139,250,0.06);
-            border: 1px solid rgba(167,139,250,0.2);
-            border-radius: 10px;
-            padding: 14px 16px;
-            margin-bottom: 16px;
-        }
-        .vault-box-header {
-            display: flex; align-items: center; gap: 8px;
-            font-size: 13px; font-weight: 600; color: var(--vault);
-            margin-bottom: 8px;
-            font-family: 'JetBrains Mono', monospace;
-        }
-        .vault-box-text {
-            font-size: 12px; color: var(--text-dim); line-height: 1.5;
-        }
-        .vault-box-rfc {
-            margin-top: 8px;
-            font-size: 11px;
-            color: rgba(167,139,250,0.6);
-            font-family: 'JetBrains Mono', monospace;
-        }
+/* ─── LAYOUT ─────────────────────────────── */
+.layout {
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  gap: 20px;
+  padding: 20px;
+  max-width: 1440px;
+  margin: 0 auto;
+}
 
-        /* ── STATS ── */
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 10px;
-        }
-        .stat-card {
-            background: var(--surface-light);
-            border-radius: 9px; padding: 14px;
-            text-align: center;
-            border: 1px solid var(--border);
-        }
-        .stat-value {
-            font-family: 'Syne', sans-serif;
-            font-size: 30px; font-weight: 800;
-            color: var(--auth0-orange);
-            margin-bottom: 3px;
-        }
-        .stat-label {
-            font-size: 11px; color: var(--text-dim);
-            text-transform: uppercase; letter-spacing: 0.7px;
-        }
+.left-col { display: flex; flex-direction: column; gap: 16px; }
+.right-col { display: flex; flex-direction: column; gap: 16px; }
 
-        /* ── AGENT GRID ── */
-        .agents-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 10px;
-        }
-        .agent-card {
-            background: var(--surface-light);
-            border-radius: 9px; padding: 14px;
-            border: 1px solid var(--border);
-            text-align: center;
-            transition: border-color 0.2s;
-        }
-        .agent-card:hover { border-color: var(--border-bright); }
-        .agent-icon { font-size: 26px; margin-bottom: 6px; }
-        .agent-name { font-size: 12px; font-weight: 600; margin-bottom: 3px; }
-        .agent-port {
-            font-size: 10px; color: var(--text-dim);
-            font-family: 'JetBrains Mono', monospace;
-            margin-bottom: 7px;
-        }
-        .agent-status {
-            display: inline-flex; align-items: center; gap: 5px;
-            font-size: 11px; padding: 3px 9px;
-            background: var(--surface);
-            border-radius: 20px;
-        }
-        .status-dot {
-            width: 7px; height: 7px; border-radius: 50%;
-        }
-        .status-dot.healthy {
-            background: var(--success);
-            box-shadow: 0 0 6px var(--success);
-            animation: pulse 2s ease-in-out infinite;
-        }
-        .status-dot.error { background: var(--error); }
+/* ─── CARDS ─────────────────────────────── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  animation: fade-up 0.4s ease both;
+}
 
-        /* ── PIPELINE STEPS ── */
-        .pipeline-step {
-            background: var(--surface-light);
-            border-radius: 9px; padding: 14px 16px;
-            margin-bottom: 10px;
-            border-left: 3px solid var(--border-bright);
-            display: flex; align-items: flex-start; gap: 14px;
-            transition: all 0.2s;
-        }
-        .pipeline-step.running {
-            border-left-color: var(--info);
-            animation: stepglow 2s ease-in-out infinite;
-        }
-        .pipeline-step.success { border-left-color: var(--success); }
-        .pipeline-step.warning { border-left-color: var(--warning); }
-        .pipeline-step.error   { border-left-color: var(--error); }
-        .pipeline-step.vault   { border-left-color: var(--vault); background: rgba(167,139,250,0.05); }
+.card:nth-child(2) { animation-delay: 0.05s; }
+.card:nth-child(3) { animation-delay: 0.1s; }
+.card:nth-child(4) { animation-delay: 0.15s; }
 
-        @keyframes stepglow {
-            0%,100% { opacity: 1; }
-            50% { opacity: 0.75; }
-        }
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 
-        .pipeline-icon {
-            width: 40px; height: 40px;
-            border-radius: 8px;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 20px;
-            background: var(--surface);
-            flex-shrink: 0;
-        }
-        .pipeline-content { flex: 1; min-width: 0; }
-        .pipeline-agent {
-            font-size: 14px; font-weight: 600;
-            margin-bottom: 3px;
-            display: flex; align-items: center; gap: 8px;
-        }
-        .pipeline-status { font-size: 12px; color: var(--text-dim); margin-bottom: 6px; }
-        .pipeline-reasoning {
-            font-size: 11px; color: var(--text-dim);
-            background: var(--surface);
-            padding: 7px 11px; border-radius: 5px;
-            margin-top: 6px;
-            font-family: 'JetBrains Mono', monospace;
-            line-height: 1.6;
-            word-break: break-word;
-        }
-        .pipeline-time {
-            font-size: 11px; color: var(--text-dim);
-            font-family: 'JetBrains Mono', monospace;
-            padding: 3px 8px; background: var(--surface); border-radius: 4px;
-            flex-shrink: 0;
-        }
+.card-title {
+  font-family: 'Syne', sans-serif;
+  font-size: 15px; font-weight: 700;
+  margin-bottom: 18px;
+  display: flex; align-items: center; gap: 10px;
+}
 
-        /* ── LOADER ── */
-        .loader {
-            border: 2px solid var(--surface-light);
-            border-top: 2px solid var(--auth0-orange);
-            border-radius: 50%;
-            width: 22px; height: 22px;
-            animation: spin 0.8s linear infinite;
-            flex-shrink: 0;
-        }
-        @keyframes spin { 100% { transform: rotate(360deg); } }
+.card-icon {
+  width: 30px; height: 30px; border-radius: 7px;
+  background: var(--surface-light);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px;
+}
 
-        /* ── BADGES ── */
-        .risk-badge {
-            display: inline-block; padding: 3px 9px;
-            border-radius: 20px; font-size: 11px; font-weight: 700;
-            text-transform: uppercase; letter-spacing: 0.5px;
-            font-family: 'JetBrains Mono', monospace;
-        }
-        .risk-critical { background: rgba(255,59,48,0.15); color: var(--critical); border: 1px solid var(--critical); }
-        .risk-high   { background: rgba(239,68,68,0.12); color: var(--error);    border: 1px solid var(--error); }
-        .risk-medium { background: rgba(245,158,11,0.12); color: var(--warning); border: 1px solid var(--warning); }
-        .risk-low    { background: rgba(34,197,94,0.12);  color: var(--success); border: 1px solid var(--success); }
+/* ─── VAULT BOX ─────────────────────────── */
+.vault-box {
+  background: var(--vault-dim);
+  border: 1px solid rgba(167,139,250,0.2);
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+.vault-box-header {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; font-weight: 600; color: var(--vault);
+  font-family: 'JetBrains Mono', monospace;
+  margin-bottom: 8px;
+}
+.vault-box-body { font-size: 12px; color: var(--text-dim); line-height: 1.5; }
+.vault-box-rfc {
+  margin-top: 8px; font-size: 11px;
+  color: rgba(167,139,250,0.55);
+  font-family: 'JetBrains Mono', monospace;
+}
 
-        .priority-badge {
-            display: inline-block; padding: 3px 9px;
-            border-radius: 5px; font-size: 11px; font-weight: 700;
-            font-family: 'JetBrains Mono', monospace;
-        }
-        .priority-badge.p0 { background: rgba(239,68,68,0.15);   color: var(--error);   border: 1px solid var(--error); }
-        .priority-badge.p1 { background: rgba(245,158,11,0.15);  color: var(--warning); border: 1px solid var(--warning); }
-        .priority-badge.p2 { background: rgba(56,189,248,0.12);  color: var(--info);    border: 1px solid var(--info); }
-        .priority-badge.p3 { background: rgba(34,197,94,0.12);   color: var(--success); border: 1px solid var(--success); }
+/* ─── FORM ─────────────────────────────── */
+.form-group { margin-bottom: 14px; }
+.form-label {
+  display: block; font-size: 11px; font-weight: 600;
+  color: var(--text-dim); margin-bottom: 6px;
+  text-transform: uppercase; letter-spacing: 0.6px;
+}
+.form-input {
+  width: 100%; padding: 10px 13px;
+  background: var(--surface-light);
+  border: 1px solid var(--border-b);
+  border-radius: 8px; color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px; outline: none;
+  transition: border-color 0.15s;
+}
+.form-input:focus { border-color: var(--orange); }
+.form-input::placeholder { color: var(--text-muted); }
+textarea.form-input { resize: vertical; min-height: 76px; line-height: 1.5; font-family: 'Inter', sans-serif; font-size: 13px; }
 
-        /* ── RESULTS TABLE ── */
-        .results-table { width: 100%; border-collapse: collapse; margin-top: 4px; }
-        .results-table th {
-            text-align: left; padding: 10px 12px;
-            background: var(--surface-light);
-            color: var(--text-dim);
-            font-size: 11px; font-weight: 600;
-            text-transform: uppercase; letter-spacing: 0.6px;
-            border-bottom: 2px solid var(--border);
-        }
-        .results-table td {
-            padding: 12px; border-bottom: 1px solid var(--border);
-            font-size: 13px; vertical-align: middle;
-        }
-        .results-table tr:hover td { background: rgba(255,255,255,0.02); }
-        .results-table tr { cursor: pointer; }
+.btn-group { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
+.btn-block { width: 100%; justify-content: center; padding: 12px; font-size: 14px; border-radius: 10px; }
 
-        .pr-link {
-            color: var(--auth0-orange);
-            text-decoration: none; font-weight: 600;
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 12px;
-        }
-        .pr-link:hover { text-decoration: underline; }
+/* ─── STATS ─────────────────────────────── */
+.stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.stat-card {
+  background: var(--surface-light);
+  border: 1px solid var(--border);
+  border-radius: 10px; padding: 16px;
+  text-align: center; transition: border-color 0.3s;
+}
+.stat-value {
+  font-family: 'Syne', sans-serif;
+  font-size: 28px; font-weight: 800;
+  color: var(--orange); margin-bottom: 4px;
+  transition: color 0.5s;
+}
+.stat-label {
+  font-size: 10px; color: var(--text-dim);
+  text-transform: uppercase; letter-spacing: 0.8px;
+}
 
-        /* ── QUALITY SCORE ── */
-        .quality-bar-wrap { display: flex; align-items: center; gap: 8px; }
-        .quality-bar {
-            height: 6px; border-radius: 3px;
-            background: var(--surface-light);
-            flex: 1; overflow: hidden;
-        }
-        .quality-bar-fill {
-            height: 100%; border-radius: 3px;
-            background: linear-gradient(90deg, var(--success), #16A34A);
-            transition: width 0.6s ease;
-        }
-        .quality-score-val {
-            font-size: 12px; font-weight: 700;
-            color: var(--success);
-            font-family: 'JetBrains Mono', monospace;
-            min-width: 36px; text-align: right;
-        }
+/* ─── AGENTS ─────────────────────────────── */
+.agents-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 
-        /* ── ISSUE DETAILS EXPAND ── */
-        .issue-expand {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 14px; margin-top: 10px;
-            display: none;
-        }
-        .issue-expand.open { display: block; }
-        .issue-expand-label {
-            font-size: 11px; font-weight: 600;
-            color: var(--auth0-orange);
-            text-transform: uppercase; letter-spacing: 0.5px;
-            margin-bottom: 4px;
-        }
-        .issue-expand-val {
-            font-size: 12px; color: var(--text-dim); line-height: 1.6;
-            font-family: 'JetBrains Mono', monospace;
-        }
+.agent-tile {
+  background: var(--surface-light);
+  border: 1px solid var(--border);
+  border-radius: 10px; padding: 14px;
+  text-align: center; transition: all 0.3s;
+}
+.agent-tile.healthy { border-color: var(--green); box-shadow: 0 0 12px var(--green-dim); }
+.agent-tile.connecting { border-color: var(--yellow); box-shadow: 0 0 12px var(--yellow-dim); animation: tile-pulse 1.2s infinite; }
+.agent-tile.offline { opacity: 0.55; }
 
-        /* ── SUMMARY MARKDOWN ── */
-        #summaryMarkdown {
-            font-size: 13px; line-height: 1.7;
-            color: var(--text-dim);
-        }
-        #summaryMarkdown h2 {
-            font-family: 'Syne', sans-serif;
-            font-size: 15px; color: var(--text-main);
-            margin: 14px 0 6px; padding-bottom: 4px;
-            border-bottom: 1px solid var(--border);
-        }
-        #summaryMarkdown ul {
-            padding-left: 18px; margin: 6px 0;
-        }
-        #summaryMarkdown li { margin-bottom: 4px; }
-        #summaryMarkdown strong { color: var(--text-main); }
-        #summaryMarkdown code {
-            background: var(--surface-light);
-            padding: 2px 6px; border-radius: 4px;
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 11px; color: var(--auth0-orange2);
-        }
-        #summaryMarkdown a {
-            color: var(--auth0-orange);
-            text-decoration: none;
-        }
-        #summaryMarkdown a:hover { text-decoration: underline; }
+@keyframes tile-pulse {
+  0%,100% { box-shadow: 0 0 8px var(--yellow-dim); }
+  50% { box-shadow: 0 0 20px rgba(245,158,11,0.3); }
+}
 
-        /* ── INFO / ERROR BOX ── */
-        .info-box {
-            background: rgba(56,189,248,0.07);
-            border: 1px solid rgba(56,189,248,0.3);
-            border-radius: 8px; padding: 14px; margin-top: 12px;
-        }
-        .info-box-title {
-            color: var(--info); font-weight: 600; margin-bottom: 6px;
-            display: flex; align-items: center; gap: 7px; font-size: 13px;
-        }
-        .error-box {
-            background: rgba(239,68,68,0.07);
-            border: 1px solid rgba(239,68,68,0.3);
-            border-radius: 8px; padding: 14px; margin-top: 12px;
-        }
-        .error-box-title {
-            color: var(--error); font-weight: 600; margin-bottom: 6px;
-            display: flex; align-items: center; gap: 7px; font-size: 13px;
-        }
+.agent-icon { font-size: 24px; margin-bottom: 5px; }
+.agent-name { font-size: 12px; font-weight: 700; color: var(--text); }
+.agent-port { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--text-muted); margin-top: 2px; }
 
-        /* ── EMPTY STATE ── */
-        .empty-state {
-            text-align: center; padding: 40px 20px;
-            color: var(--text-dim);
-        }
-        .empty-state-icon { font-size: 44px; margin-bottom: 10px; opacity: 0.4; }
-        .empty-state-text { font-size: 14px; }
+.agent-status-pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  margin-top: 8px; padding: 3px 8px;
+  border-radius: 20px; font-size: 10px; font-weight: 700;
+}
+.pill-healthy { background: var(--green-dim); color: var(--green); border: 1px solid var(--green); }
+.pill-connecting { background: var(--yellow-dim); color: var(--yellow); border: 1px solid var(--yellow); }
+.pill-offline { background: rgba(61,74,98,0.3); color: var(--text-muted); border: 1px solid var(--border); }
 
-        /* ── PULSE ANIMATIONS ── */
-        @keyframes pulse {
-            0%,100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
+.status-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+}
+.dot-healthy { background: var(--green); animation: blink 2s infinite; }
+.dot-connecting { background: var(--yellow); animation: blink 0.7s infinite; }
+.dot-offline { background: var(--text-muted); }
 
-        /* ── VAULT PROOF BANNER ── */
-        .vault-proof {
-            display: none;
-            background: rgba(167,139,250,0.08);
-            border: 1px solid rgba(167,139,250,0.35);
-            border-radius: 10px;
-            padding: 14px 18px;
-            align-items: center; gap: 14px;
-            margin-bottom: 16px;
-        }
-        .vault-proof.visible { display: flex; }
-        .vault-proof-icon { font-size: 26px; flex-shrink: 0; }
-        .vault-proof-text { flex: 1; }
-        .vault-proof-title {
-            font-size: 13px; font-weight: 700; color: var(--vault);
-            margin-bottom: 3px;
-        }
-        .vault-proof-sub {
-            font-size: 11px; color: rgba(167,139,250,0.65);
-            font-family: 'JetBrains Mono', monospace;
-        }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
 
-        /* ── PR RESULT CARD ── */
-        .pr-result-card {
-            display: none;
-            background: rgba(34,197,94,0.06);
-            border: 1px solid rgba(34,197,94,0.25);
-            border-radius: 10px;
-            padding: 16px 18px;
-            margin-bottom: 16px;
-            align-items: center; gap: 16px;
-        }
-        .pr-result-card.visible { display: flex; }
-        .pr-result-icon { font-size: 28px; flex-shrink: 0; }
-        .pr-result-text { flex: 1; }
-        .pr-result-title { font-size: 14px; font-weight: 700; color: var(--success); margin-bottom: 3px; }
-        .pr-result-url {
-            font-size: 12px; color: var(--auth0-orange);
-            font-family: 'JetBrains Mono', monospace;
-        }
-        .pr-result-url a { color: inherit; text-decoration: none; }
-        .pr-result-url a:hover { text-decoration: underline; }
+/* ─── BANNERS ─────────────────────────────── */
+.vault-banner {
+  display: none;
+  background: var(--vault-dim);
+  border: 1px solid rgba(167,139,250,0.25);
+  border-radius: 12px; padding: 16px 20px;
+  align-items: center; gap: 14px;
+}
+.vault-banner.visible { display: flex; animation: fade-up 0.4s ease; }
+.vault-banner-icon { font-size: 24px; }
+.vault-banner-text { flex: 1; }
+.vault-banner-title { font-size: 14px; font-weight: 700; color: var(--vault); }
+.vault-banner-sub { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
 
-        /* ── STEP COUNTER ── */
-        .step-counter {
-            display: inline-flex; align-items: center; justify-content: center;
-            width: 20px; height: 20px;
-            border-radius: 50%;
-            background: var(--auth0-orange);
-            font-size: 11px; font-weight: 700;
-            color: white; flex-shrink: 0;
-        }
+.pr-banner {
+  display: none;
+  background: rgba(34,197,94,0.06);
+  border: 1px solid rgba(34,197,94,0.25);
+  border-radius: 12px; padding: 16px 20px;
+  align-items: center; gap: 14px;
+}
+.pr-banner.visible { display: flex; animation: fade-up 0.4s ease; }
+.pr-banner-icon { font-size: 24px; }
+.pr-banner-title { font-size: 14px; font-weight: 700; color: var(--green); }
+.pr-banner-url a { color: var(--orange); font-size: 13px; font-family: 'JetBrains Mono', monospace; text-decoration: none; }
+.pr-banner-url a:hover { text-decoration: underline; }
 
-        /* ── REASONING TRAIL TOGGLE ── */
-        .reasoning-toggle {
-            background: none; border: none; cursor: pointer;
-            color: var(--text-dim); font-size: 11px;
-            display: flex; align-items: center; gap: 5px;
-            padding: 4px 0; font-family: 'JetBrains Mono', monospace;
-        }
-        .reasoning-toggle:hover { color: var(--auth0-orange); }
+/* ─── PIPELINE ─────────────────────────────── */
+.pipeline-header {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 16px;
+}
+.pipeline-title {
+  font-family: 'Syne', sans-serif;
+  font-size: 15px; font-weight: 700;
+}
+.pipeline-badge {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.5px;
+  padding: 3px 9px; border-radius: 20px;
+}
+.badge-idle { background: var(--surface-light); color: var(--text-muted); border: 1px solid var(--border); }
+.badge-running { background: var(--green-dim); color: var(--green); border: 1px solid var(--green); animation: badge-pulse 2s infinite; }
+.badge-complete { background: var(--green-dim); color: var(--green); border: 1px solid var(--green); }
 
-        .reasoning-steps { display: none; }
-        .reasoning-steps.open { display: block; }
+@keyframes badge-pulse {
+  0%,100%{box-shadow:none} 50%{box-shadow:0 0 10px var(--green-dim)}
+}
 
-        .reasoning-step-item {
-            display: flex; gap: 10px; padding: 6px 0;
-            border-left: 2px solid var(--border-bright);
-            padding-left: 12px; margin-left: 8px;
-            font-size: 11px; color: var(--text-dim);
-            font-family: 'JetBrains Mono', monospace;
-            line-height: 1.5;
-        }
-        .reasoning-step-item:last-child { border-left-color: transparent; }
-        .reasoning-step-num {
-            font-weight: 700; color: var(--auth0-orange);
-            flex-shrink: 0; min-width: 24px;
-        }
-    </style>
+.spinner {
+  width: 14px; height: 14px;
+  border: 2px solid rgba(56,189,248,0.2);
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  display: none;
+}
+.spinner.visible { display: block; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ─── PIPELINE STEPS ─────────────────────────── */
+.step {
+  background: var(--surface-light);
+  border: 1px solid var(--border);
+  border-radius: 12px; padding: 16px;
+  display: flex; gap: 14px; align-items: flex-start;
+  margin-bottom: 10px; position: relative;
+  overflow: hidden; transition: all 0.4s;
+}
+
+.step::before {
+  content: ''; position: absolute;
+  left: 0; top: 0; bottom: 0; width: 3px;
+  border-radius: 3px 0 0 3px;
+  transition: background 0.4s;
+}
+
+.step.pending::before { background: var(--border); }
+.step.running::before { background: var(--blue); animation: bar-shimmer 1s infinite; }
+.step.complete::before { background: var(--green); }
+.step.vault-step::before { background: var(--vault); }
+.step.code-step::before { background: var(--code); }
+
+@keyframes bar-shimmer { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+.step.running {
+  border-color: var(--blue);
+  box-shadow: 0 0 20px var(--blue-dim);
+  background: rgba(56,189,248,0.03);
+}
+.step.complete { border-color: var(--green); background: rgba(34,197,94,0.02); }
+.step.vault-step { border-color: rgba(167,139,250,0.3); background: var(--vault-dim); }
+.step.code-step.running {
+  border-color: var(--code);
+  box-shadow: 0 0 20px var(--code-dim);
+  background: var(--code-dim);
+}
+.step.code-step.complete { border-color: var(--code); }
+
+.step-icon {
+  width: 40px; height: 40px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; flex-shrink: 0;
+  background: var(--surface); border: 1px solid var(--border);
+  transition: all 0.4s;
+}
+.step.running .step-icon { border-color: var(--blue); background: var(--blue-dim); animation: icon-glow 1.5s infinite; }
+.step.complete .step-icon { border-color: var(--green); background: var(--green-dim); }
+.step.vault-step .step-icon { border-color: rgba(167,139,250,0.4); background: var(--vault-dim); }
+.step.code-step.running .step-icon { border-color: var(--code); background: var(--code-dim); }
+.step.code-step.complete .step-icon { border-color: var(--code); background: var(--code-dim); }
+
+@keyframes icon-glow { 0%,100%{box-shadow:none} 50%{box-shadow:0 0 15px var(--blue-dim)} }
+
+.step-body { flex: 1; min-width: 0; }
+.step-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 3px; }
+.step-name { font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+.step-time { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); }
+.step-sub { font-size: 12px; color: var(--text-dim); margin-bottom: 10px; }
+
+/* Log area */
+.step-log {
+  background: #060810;
+  border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px 14px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11.5px; color: #86efac;
+  line-height: 1.75; max-height: 180px;
+  overflow-y: auto; display: none;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.step-log.visible { display: block; }
+
+.log-line { display: block; }
+.log-line::before { content: '→ '; color: #38BDF8; }
+.log-line.warn::before { content: '⚠ '; color: var(--yellow); }
+.log-line.err::before { content: '✗ '; color: var(--red); }
+.log-line.ok::before { content: '✓ '; color: var(--green); }
+.log-line.dim::before { content: '  '; }
+.log-line.vault-line { color: #c4b5fd; }
+.log-line.vault-line::before { content: '🔐 '; }
+.log-line.code-line { color: #6ee7b7; }
+.log-line.code-line::before { content: '⚙ '; color: var(--code); }
+
+/* Step progress bar */
+.step-prog { height: 3px; background: var(--border); border-radius: 3px; margin-top: 10px; overflow: hidden; display: none; }
+.step-prog.visible { display: block; }
+.step-prog-fill { height: 100%; border-radius: 3px; width: 0%; transition: width 0.5s ease; }
+.prog-blue { background: linear-gradient(90deg, var(--blue), #A78BFA); }
+.prog-code { background: linear-gradient(90deg, var(--code), #34d399); box-shadow: 0 0 8px rgba(16,185,129,0.4); }
+
+/* ─── OVERALL PROGRESS ─────────────────────── */
+.overall-prog {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px; padding: 14px 18px;
+  display: none;
+}
+.overall-prog.visible { display: block; animation: fade-up 0.3s ease; }
+.op-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.op-label { font-size: 12px; color: var(--text-dim); font-weight: 500; display: flex; align-items: center; gap: 8px; }
+.op-pct { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; color: var(--vault); }
+.op-bar { height: 6px; background: var(--border); border-radius: 6px; overflow: hidden; }
+.op-bar-fill { height: 100%; background: linear-gradient(90deg, var(--orange), var(--vault)); border-radius: 6px; width: 0%; transition: width 0.8s ease; box-shadow: 0 0 10px rgba(167,139,250,0.3); }
+
+/* ─── ISSUES TABLE ─────────────────────────── */
+.issue-table { width: 100%; border-collapse: collapse; }
+.issue-table th { font-size: 10px; font-weight: 700; color: var(--text-muted); letter-spacing: 1.2px; text-transform: uppercase; padding: 8px 12px; border-bottom: 1px solid var(--border); text-align: left; }
+.issue-table td { padding: 14px 12px; border-bottom: 1px solid rgba(30,45,69,0.5); vertical-align: top; }
+.issue-table tr:last-child td { border-bottom: none; }
+.issue-table tr:hover td { background: rgba(56,189,248,0.03); }
+
+.issue-title-main { font-size: 13px; font-weight: 700; color: var(--text); display: block; margin-bottom: 3px; }
+.issue-reasoning { font-size: 12px; color: var(--text-dim); font-style: italic; line-height: 1.4; }
+
+.sev-badge {
+  display: inline-block; padding: 3px 9px; border-radius: 20px;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.5px;
+  font-family: 'JetBrains Mono', monospace;
+}
+.sev-critical { background: rgba(255,59,48,0.15); color: var(--critical); border: 1px solid var(--critical); }
+.sev-high     { background: var(--red-dim); color: var(--red); border: 1px solid var(--red); }
+.sev-medium   { background: var(--yellow-dim); color: var(--yellow); border: 1px solid var(--yellow); }
+.sev-low      { background: var(--green-dim); color: var(--green); border: 1px solid var(--green); }
+
+.pri-badge {
+  display: inline-block; padding: 3px 8px; border-radius: 5px;
+  font-size: 11px; font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+}
+.pri-p1 { background: var(--red-dim); color: var(--red); border: 1px solid var(--red); }
+.pri-p2 { background: var(--yellow-dim); color: var(--yellow); border: 1px solid var(--yellow); }
+.pri-p3 { background: var(--green-dim); color: var(--green); border: 1px solid var(--green); }
+
+.mitigation-block {
+  background: var(--surface-light);
+  border-left: 3px solid var(--blue);
+  border-radius: 0 6px 6px 0;
+  padding: 8px 12px; margin-top: 8px;
+  font-size: 12px; color: var(--text-dim);
+  line-height: 1.5; display: none;
+}
+.mitigation-block.open { display: block; animation: fade-up 0.2s ease; }
+
+/* ─── EXECUTIVE SUMMARY ─────────────────────── */
+.summary-body {
+  font-size: 13px; line-height: 1.7; color: var(--text-dim);
+}
+.summary-body h2 {
+  font-family: 'Syne', sans-serif;
+  font-size: 14px; font-weight: 700; color: var(--text);
+  margin: 16px 0 6px; padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.summary-body ul { padding-left: 18px; }
+.summary-body li { margin-bottom: 4px; }
+.summary-body strong { color: var(--text); font-weight: 600; }
+.summary-body a { color: var(--orange); }
+.summary-body code {
+  background: var(--surface-light); border-radius: 4px;
+  padding: 1px 6px; font-family: 'JetBrains Mono', monospace; font-size: 12px;
+}
+
+/* ─── EMPTY STATE ─────────────────────────── */
+.empty-state {
+  text-align: center; padding: 30px 20px;
+  color: var(--text-muted); font-size: 13px;
+}
+.empty-state-icon { font-size: 32px; margin-bottom: 10px; }
+
+/* ─── TOAST ─────────────────────────────── */
+.toasts {
+  position: fixed; top: 78px; right: 18px;
+  z-index: 999; display: flex; flex-direction: column; gap: 8px;
+}
+.toast {
+  background: var(--surface-mid); border: 1px solid var(--border);
+  border-radius: 10px; padding: 11px 16px;
+  font-size: 13px; display: flex; align-items: center; gap: 10px;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.4); max-width: 320px;
+  animation: slide-in 0.3s ease;
+}
+.toast.ok  { border-color: var(--green); }
+.toast.inf { border-color: var(--blue); }
+.toast.wrn { border-color: var(--yellow); }
+
+@keyframes slide-in { from{transform:translateX(120%);opacity:0} to{transform:translateX(0);opacity:1} }
+
+/* ─── DEMO WATERMARK ─────────────────────── */
+.demo-wm {
+  position: fixed; bottom: 18px; right: 18px;
+  background: rgba(139,92,246,0.12);
+  border: 1px solid rgba(139,92,246,0.4);
+  color: var(--demo); padding: 5px 14px;
+  border-radius: 20px; font-size: 11px;
+  font-weight: 700; letter-spacing: 1px;
+  text-transform: uppercase; display: none; z-index: 98;
+}
+.demo-wm.visible { display: block; }
+
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 5px; }
+</style>
 </head>
 <body>
 
-    <!-- ── HEADER ── -->
-    <div class="header">
-        <div class="header-left">
-            <div class="logo-mark">🤖</div>
-            <div class="header-title">
-                <h1>Authorized DevOps Agent</h1>
-                <div class="subtitle">
-                    Auth0 Hackathon — Autonomous GitHub DevOps Pipeline
-                    <span class="vault-pill"><span class="vault-dot"></span>Token Vault · RFC 8693</span>
-                </div>
-            </div>
+<!-- ═══ HEADER ═══════════════════════════════════════════ -->
+<header class="header">
+  <div class="header-left">
+    <div class="logo">🤖</div>
+    <div>
+      <h1 class="header-title">Authorized DevOps Agent</h1>
+      <div class="header-subtitle">
+        Auth0 Hackathon — Autonomous GitHub DevOps Pipeline
+        <span class="vault-pill"><span class="vault-dot"></span>Token Vault · RFC 8693</span>
+      </div>
+    </div>
+  </div>
+  <div class="header-actions">
+    <button class="btn btn-ghost-demo" id="demoBadge" onclick="toggleDemoMode()">🧪 DEMO MODE</button>
+    <button class="btn btn-vault" id="vaultBadge" style="display:none">🔐 Token Vault Active</button>
+    <button class="btn btn-secondary" onclick="resetAll()">🔄 Refresh</button>
+    <button class="btn btn-run-demo" onclick="runDemo()">🎬 Run Demo</button>
+    <button class="btn btn-primary" onclick="runAgent()">▶ Run Agent</button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- ═══ LEFT COLUMN ═══════════════════════════════════ -->
+  <div class="left-col">
+
+    <!-- Config -->
+    <div class="card">
+      <div class="card-title">
+        <div class="card-icon">⚙️</div> Configuration
+      </div>
+
+      <div class="vault-box">
+        <div class="vault-box-header">🔐 Auth0 Token Vault</div>
+        <div class="vault-box-body">
+          The Orchestrator exchanges your Auth0 refresh token for a scoped GitHub token per request. Credentials never stored.
         </div>
-        <div class="header-actions">
-            <span id="modeBadge" class="mode-badge"></span>
-            <span id="tokenVaultBadge">🔐 Token Vault Active</span>
-            <button class="btn btn-secondary" onclick="refreshAgents()">🔄 Refresh</button>
-            <button class="btn btn-demo" onclick="runDemoMode()">🎬 Run Demo</button>
-            <button class="btn btn-primary" id="runBtn" onclick="runRealPipeline()">▶ Run Agent</button>
-        </div>
+        <div class="vault-box-rfc">grant_type=urn:ietf:params:oauth:grant-type:token-exchange</div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">GitHub Repository</label>
+        <input type="text" class="form-input" id="repoInput" value="acme-corp/web-app" placeholder="owner/repo">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Goal</label>
+        <textarea class="form-input" id="goalInput" placeholder="Describe the task for the agent...">Fix JWT token validation vulnerability and update dependencies</textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Auth0 Refresh Token <span style="color:var(--text-muted);font-weight:400">(leave empty → uses AUTH0_REFRESH_TOKEN from server .env)</span></label>
+        <input type="password" class="form-input" id="tokenInput" placeholder="•••••••••••••••">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Orchestrator URL</label>
+        <input type="text" class="form-input" id="orchUrl" value="http://localhost:8600">
+      </div>
+      <div class="btn-group">
+        <button class="btn btn-primary btn-block" onclick="runAgent()">🚀 Run Agent Pipeline</button>
+        <button class="btn btn-run-demo btn-block" onclick="runDemo()">🎬 Run Demo Mode</button>
+      </div>
     </div>
 
-    <div class="grid">
-
-        <!-- ── LEFT COLUMN ── -->
-        <div class="left-col">
-
-            <!-- Configuration -->
-            <div class="card">
-                <div class="card-title">
-                    <div class="card-title-icon">⚙️</div>
-                    Configuration
-                </div>
-
-                <div class="vault-box">
-                    <div class="vault-box-header">
-                        🔐 Auth0 Token Vault
-                    </div>
-                    <div class="vault-box-text">
-                        The Orchestrator exchanges your Auth0 refresh token for a
-                        scoped GitHub token per request. Credentials never stored.
-                    </div>
-                    <div class="vault-box-rfc">grant_type=urn:ietf:params:oauth:grant-type:token-exchange</div>
-                </div>
-
-                <div class="input-group">
-                    <label class="input-label">GitHub Repository</label>
-                    <input type="text" class="input" id="repoInput"
-                        placeholder="owner/repository" value="acme-corp/web-app">
-                </div>
-
-                <div class="input-group">
-                    <label class="input-label">Goal</label>
-                    <textarea class="input" id="goalInput"
-                        placeholder="Describe what the agent should fix or build...">Fix JWT token validation vulnerability and update dependencies</textarea>
-                </div>
-
-                <div class="input-group">
-                    <label class="input-label">
-                        Auth0 Refresh Token
-                        <span style="font-weight:400; font-size:11px; color:#a78bfa; margin-left:6px;">
-                            (leave empty → uses AUTH0_REFRESH_TOKEN from server .env)
-                        </span>
-                    </label>
-                    <input type="password" class="input" id="refreshTokenInput"
-                        placeholder="Paste token, or leave empty if set in .env">
-                </div>
-
-                <div class="input-group">
-                    <label class="input-label">
-                        Orchestrator URL
-                        <span style="font-weight:400;font-size:11px;color:#a78bfa;margin-left:6px;">
-                            (localhost for Docker · Railway URL for live)
-                        </span>
-                    </label>
-                    <input type="text" class="input" id="orchestratorUrl"
-                        value="http://localhost:8600"
-                        placeholder="http://localhost:8600 or https://your-app.railway.app">
-                </div>
-
-                <button class="btn btn-primary" style="width:100%; justify-content:center; margin-top:4px;"
-                    id="startBtn" onclick="runRealPipeline()">
-                    🚀 Run Agent Pipeline
-                </button>
-                <button class="btn btn-demo" style="width:100%; justify-content:center; margin-top:10px;"
-                    onclick="runDemoMode()">
-                    🎬 Run Demo Mode
-                </button>
-            </div>
-
-            <!-- Pipeline Stats -->
-            <div class="card">
-                <div class="card-title">
-                    <div class="card-title-icon">📊</div>
-                    Pipeline Results
-                </div>
-                <div class="stats-grid" id="summaryStats">
-                    <div class="stat-card">
-                        <div class="stat-value" id="statRisk">—</div>
-                        <div class="stat-label">Risk Level</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value" id="statIssues">—</div>
-                        <div class="stat-label">Issues Found</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value" id="statTests">—</div>
-                        <div class="stat-label">Tests</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value" id="statPR">—</div>
-                        <div class="stat-label">PR Status</div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Agent Health -->
-            <div class="card">
-                <div class="card-title">
-                    <div class="card-title-icon">💚</div>
-                    Agent Health
-                    <span id="healthEnvLabel" style="margin-left:8px; font-size:11px; font-weight:400; color:var(--text-dim);"></span>
-                </div>
-                <div class="agents-grid" id="agentsGrid">
-                    <div style="grid-column:1/-1; text-align:center; color:var(--text-dim); padding:16px; font-size:13px;">
-                        Checking agents…
-                    </div>
-                </div>
-            </div>
-
+    <!-- Pipeline Results -->
+    <div class="card">
+      <div class="card-title"><div class="card-icon">📊</div> Pipeline Results</div>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-value" id="statRisk">—</div>
+          <div class="stat-label">Risk Level</div>
         </div>
-
-        <!-- ── RIGHT COLUMN ── -->
-        <div class="right-col">
-
-            <!-- Token Vault proof + PR result banners -->
-            <div class="vault-proof" id="vaultProofBanner">
-                <div class="vault-proof-icon">🔐</div>
-                <div class="vault-proof-text">
-                    <div class="vault-proof-title">Auth0 Token Vault — RFC 8693 Token Exchange</div>
-                    <div class="vault-proof-sub">Scoped GitHub token obtained in-memory · Never stored · Garbage collected after request</div>
-                </div>
-                <div class="vault-pill" style="flex-shrink:0;"><span class="vault-dot"></span>ACTIVE</div>
-            </div>
-
-            <div class="pr-result-card" id="prResultBanner">
-                <div class="pr-result-icon">🎉</div>
-                <div class="pr-result-text">
-                    <div class="pr-result-title">Pull Request Created Successfully</div>
-                    <div class="pr-result-url" id="prResultUrl"></div>
-                </div>
-            </div>
-
-            <!-- Execution Pipeline -->
-            <div class="card">
-                <div class="card-title">
-                    <div class="card-title-icon">🔄</div>
-                    Execution Pipeline
-                </div>
-                <div id="pipelineView">
-                    <div class="pipeline-step">
-                        <div class="pipeline-icon">⏸️</div>
-                        <div class="pipeline-content">
-                            <div class="pipeline-agent">Pipeline Idle</div>
-                            <div class="pipeline-status">Click <strong>Run Demo</strong> to see the 6-agent pipeline in action, or <strong>Run Agent Pipeline</strong> for live GitHub integration via Auth0 Token Vault</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Issues Found -->
-            <div class="card">
-                <div class="card-title">
-                    <div class="card-title-icon">🔍</div>
-                    Issues &amp; Risk Assessment
-                </div>
-                <div id="issuesContainer">
-                    <div class="empty-state">
-                        <div class="empty-state-icon">📭</div>
-                        <div class="empty-state-text">No pipeline run yet — click <strong>Run Demo</strong> to see the system in action</div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Executive Summary -->
-            <div class="card" id="summaryCard" style="display:none;">
-                <div class="card-title">
-                    <div class="card-title-icon">📋</div>
-                    Executive Summary
-                    <span style="margin-left:auto; font-size:11px; color:var(--text-dim); font-family:'JetBrains Mono',monospace;" id="summaryQuality"></span>
-                </div>
-                <div id="summaryMarkdown"></div>
-            </div>
-
+        <div class="stat-card">
+          <div class="stat-value" id="statIssues">—</div>
+          <div class="stat-label">Issues Found</div>
         </div>
+        <div class="stat-card">
+          <div class="stat-value" id="statTests" style="color:var(--green)">—</div>
+          <div class="stat-label">Tests</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="statPR">—</div>
+          <div class="stat-label">PR Status</div>
+        </div>
+      </div>
     </div>
 
-    <script>
-    // ══════════════════════════════════════════════════════
-    //  AGENT REGISTRY — 6 agents (vs 5 in GitLab version)
-    // ══════════════════════════════════════════════════════
-    const AGENTS = [
-        { name: 'Orchestrator',   port: 8600, icon: '🎭' },
-        { name: 'Planner',        port: 8601, icon: '📋' },
-        { name: 'Progress',       port: 8602, icon: '📈' },
-        { name: 'Risks',          port: 8603, icon: '⚠️' },
-        { name: 'Digest',         port: 8604, icon: '📝' },
-        { name: 'Code Exec',      port: 8605, icon: '⚙️' },
-    ];
+    <!-- Agent Health -->
+    <div class="card">
+      <div class="card-title">
+        <div class="card-icon">💚</div> Agent Health
+        <span id="agentEnvLabel" style="margin-left:auto;font-size:11px;font-weight:400;color:var(--text-muted);"></span>
+      </div>
+      <div class="agents-grid" id="agentsGrid">
+        <!-- filled by JS -->
+        <div style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:14px;font-size:12px;">
+          Initializing...
+        </div>
+      </div>
+    </div>
 
-    // ══════════════════════════════════════════════════════
-    //  DEMO DATA
-    // ══════════════════════════════════════════════════════
-    const DEMO_RESULT = {
-        status: 'completed',
-        pr_url: 'https://github.com/acme-corp/web-app/pull/42',
-        pr_number: 42,
-        risk_level: 'HIGH',
-        issues_found: 3,
-        token_vault_used: true,
-        summary: `## 📋 Summary\n\nThe AI agent addressed a **HIGH severity** JWT secret exposure in \`acme-corp/web-app\`. A pull request was created with the proposed security fix. The agent ran 5 executable tests — all passed.\n\n## 🔐 Security & Risk\n\n- Overall risk: **HIGH**\n- Issues identified: **3**\n  - [HIGH] Hardcoded JWT secret in source code\n  - [MEDIUM] Dependency \`PyJWT 1.7.1\` has known CVE\n  - [LOW] Token expiry not validated on refresh\n\n## 🔗 Pull Request\n\n[PR #42: fix(security): move JWT secret to environment variable](https://github.com/acme-corp/web-app/pull/42)\n\n## ✅ Next Steps\n\n- Review PR #42 and run full test suite before merging\n- Rotate the exposed JWT secret immediately\n- Re-run the agent after merge to verify risk reduction`,
-        quality_metrics: { quality_score: 0.87, production_ready: true, confidence: 0.9 },
-        test_suite: { tests_passed: 5, tests_failed: 0, tests_count: 5 },
-        velocity: 'on_track',
-        issues: [
-            {
-                title: 'Hardcoded JWT secret in source code',
-                severity: 'high',
-                category: 'security',
-                priority: 'P1',
-                mitigation: 'Move SECRET_KEY to environment variable. Add validation on startup.',
-                reasoning: 'Exposed secret can be extracted from version control history.'
-            },
-            {
-                title: 'Dependency PyJWT 1.7.1 has known CVE',
-                severity: 'medium',
-                category: 'dependency',
-                priority: 'P2',
-                mitigation: 'Upgrade to PyJWT ≥ 2.6.0. Run pip-audit in CI.',
-                reasoning: 'CVE-2022-29217 — algorithm confusion attack.'
-            },
-            {
-                title: 'Token expiry not validated on refresh',
-                severity: 'low',
-                category: 'security',
-                priority: 'P3',
-                mitigation: 'Add exp claim check in validate_auth_token().',
-                reasoning: 'Allows infinite session extension via refresh.'
-            }
-        ],
-        reasoning: [
-            { step_number: 1, agent: 'Orchestrator',    description: 'Token Vault: RFC 8693 exchange — scoped GitHub token obtained',               output: { connection: 'github', scope: 'repo read:user' } },
-            { step_number: 2, agent: 'Orchestrator',    description: 'GitHub API: reading repository structure (24 files, 3 open issues)',          output: { files: 24, open_issues: 3 } },
-            { step_number: 3, agent: 'Planner',         description: 'STRATEGIC: Classified as security_fix / complexity=high',                     output: { task_type: 'security_fix', complexity: 'high', estimated_hours: 4 } },
-            { step_number: 4, agent: 'Risks',           description: 'LLM risk analysis parsed — 3 issues found, overall_risk=HIGH',               output: { risk_level: 'HIGH', issues: 3, mode: 'llm' } },
-            { step_number: 5, agent: 'Code-Execution',  description: 'STRATEGIC: Planning JWT secret fix approach',                                  output: { plan_length: 287 } },
-            { step_number: 6, agent: 'Code-Execution',  description: 'GENERATION: Fix code generated — 42 lines',                                   output: { code_hash: 'a7f3c9d2', code_length: 1124 } },
-            { step_number: 7, agent: 'Code-Execution',  description: 'EXECUTION iter 0: 4/5 tests passed',                                          output: { tests_passed: 4, quality_score: 0.74 } },
-            { step_number: 8, agent: 'Code-Execution',  description: 'REFLECTION: fixing 1 failed test — TypeError in edge case',                   output: { new_hash: 'b8e1f4a9' } },
-            { step_number: 9, agent: 'Code-Execution',  description: 'EXECUTION iter 1: 5/5 tests passed — production_ready=true',                  output: { tests_passed: 5, quality_score: 0.87, production_ready: true } },
-            { step_number: 10, agent: 'Orchestrator',   description: 'GitHub: branch fix/jwt-security-hardening created',                           output: { branch: 'fix/jwt-security-hardening' } },
-            { step_number: 11, agent: 'Orchestrator',   description: 'GitHub: patch committed (src/security/auth_fix.py)',                          output: { commit: 'a3f1c8d' } },
-            { step_number: 12, agent: 'Orchestrator',   description: 'GitHub: PR #42 created',                                                      output: { pr_number: 42, pr_url: 'https://github.com/acme-corp/web-app/pull/42' } },
-            { step_number: 13, agent: 'Progress',       description: 'Velocity: on_track — 12.5% completion rate — urgency: medium',               output: { health_status: 'on_track', urgency: 'medium' } },
-            { step_number: 14, agent: 'Digest',         description: 'Executive summary generated — quality_state=HEALTHY',                         output: { quality_state: 'HEALTHY', word_count: 187 } },
-        ]
-    };
+  </div>
 
-    // ══════════════════════════════════════════════════════
-    //  AGENT HEALTH
-    // ══════════════════════════════════════════════════════
-    // Detect deploy environment:
-    //   netlify / github.io / any non-localhost → demo deploy → skip real health checks
-    //   localhost / 127.0.0.1              → local Docker    → do real health checks
-    const IS_REMOTE_DEPLOY = !(
-        location.hostname === 'localhost' ||
-        location.hostname === '127.0.0.1' ||
-        location.hostname === ''
-    );
+  <!-- ═══ RIGHT COLUMN ═══════════════════════════════════ -->
+  <div class="right-col">
 
-    async function refreshAgents() {
-        const grid  = document.getElementById('agentsGrid');
-        const label = document.getElementById('healthEnvLabel');
-        grid.innerHTML = '';
+    <!-- Vault Banner -->
+    <div class="vault-banner" id="vaultBanner">
+      <div class="vault-banner-icon">🔐</div>
+      <div class="vault-banner-text">
+        <div class="vault-banner-title">Auth0 Token Vault — RFC 8693 Token Exchange</div>
+        <div class="vault-banner-sub">Scoped GitHub token obtained in-memory · Never stored · Garbage collected after request</div>
+      </div>
+      <div class="vault-pill" style="flex-shrink:0;"><span class="vault-dot"></span>ACTIVE</div>
+    </div>
 
-        if (IS_REMOTE_DEPLOY) {
-            // Remote deploy: agents live on a separate server (not the browser's localhost)
-            // Show them as healthy to reflect the actual system state on the server.
-            // Real production monitoring would poll the backend — beyond hackathon scope.
-            if (label) label.textContent = '(demo environment)';
-            for (const agent of AGENTS) {
-                const card = document.createElement('div');
-                card.className = 'agent-card';
-                card.innerHTML = `
-                    <div class="agent-icon">${agent.icon}</div>
-                    <div class="agent-name">${agent.name}</div>
-                    <div class="agent-port">:${agent.port}</div>
-                    <div class="agent-status">
-                        <div class="status-dot healthy"></div>
-                        <span>Healthy</span>
-                    </div>`;
-                grid.appendChild(card);
-            }
-        } else {
-            // Local Docker: do real health checks against localhost
-            if (label) label.textContent = '(local docker)';
-            for (const agent of AGENTS) {
-                const card = document.createElement('div');
-                card.className = 'agent-card';
-                let healthy = false;
-                try {
-                    const r = await fetch(
-                        `http://localhost:${agent.port}/health`,
-                        { signal: AbortSignal.timeout(2000) }
-                    );
-                    healthy = r.ok;
-                } catch {}
-                card.innerHTML = `
-                    <div class="agent-icon">${agent.icon}</div>
-                    <div class="agent-name">${agent.name}</div>
-                    <div class="agent-port">:${agent.port}</div>
-                    <div class="agent-status">
-                        <div class="status-dot ${healthy ? 'healthy' : 'error'}"></div>
-                        <span>${healthy ? 'Healthy' : 'Offline'}</span>
-                    </div>`;
-                grid.appendChild(card);
-            }
-        }
+    <!-- PR Banner -->
+    <div class="pr-banner" id="prBanner">
+      <div class="pr-banner-icon">🎉</div>
+      <div>
+        <div class="pr-banner-title">Pull Request Created Successfully</div>
+        <div class="pr-banner-url" id="prUrl"></div>
+      </div>
+    </div>
+
+    <!-- Overall Progress -->
+    <div class="overall-prog" id="overallProg">
+      <div class="op-row">
+        <div class="op-label">
+          <span class="spinner visible" id="hdrSpinner"></span>
+          Pipeline executing…
+        </div>
+        <div class="op-pct" id="opPct">0%</div>
+      </div>
+      <div class="op-bar"><div class="op-bar-fill" id="opBar"></div></div>
+    </div>
+
+    <!-- Execution Pipeline -->
+    <div class="card">
+      <div class="pipeline-header">
+        <div class="card-icon">🔄</div>
+        <div class="pipeline-title">Execution Pipeline</div>
+        <div class="pipeline-badge badge-idle" id="pipelineBadge">IDLE</div>
+        <div style="margin-left:auto">
+          <span class="spinner" id="pipelineSpinner"></span>
+        </div>
+      </div>
+      <div id="pipelineSteps">
+        <div class="step pending" style="opacity:0.5">
+          <div class="step-icon">⏸️</div>
+          <div class="step-body">
+            <div class="step-name">Pipeline Idle</div>
+            <div class="step-sub">Click <strong>Run Demo</strong> to watch the 6-agent pipeline in action</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Issues & Risk -->
+    <div class="card">
+      <div class="card-title"><div class="card-icon">🔍</div> Issues &amp; Risk Assessment</div>
+      <div id="issuesWrap">
+        <div class="empty-state">
+          <div class="empty-state-icon">📭</div>
+          <div>No pipeline run yet — click <strong>Run Demo</strong> to see results</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Executive Summary (hidden until run) -->
+    <div class="card" id="summaryCard" style="display:none">
+      <div class="card-title">
+        <div class="card-icon">📋</div> Executive Summary
+        <span id="summaryQuality" style="margin-left:auto;font-size:11px;color:var(--text-dim);font-family:'JetBrains Mono',monospace;"></span>
+      </div>
+      <div class="summary-body" id="summaryBody"></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Toasts -->
+<div class="toasts" id="toasts"></div>
+
+<!-- Demo Watermark -->
+<div class="demo-wm" id="demoWm">🎬 DEMO MODE</div>
+
+<script>
+// ══════════════════════════════════════════════════════════
+//  CONSTANTS & STATE
+// ══════════════════════════════════════════════════════════
+let isRunning = false;
+let isDemoMode = false;
+
+const AGENTS = [
+  { id: 'orchestrator', name: 'Orchestrator', port: 8600, icon: '🎭' },
+  { id: 'planner',      name: 'Planner',      port: 8601, icon: '📋' },
+  { id: 'progress',     name: 'Progress',     port: 8602, icon: '📈' },
+  { id: 'risks',        name: 'Risks',        port: 8603, icon: '⚠️' },
+  { id: 'digest',       name: 'Digest',       port: 8604, icon: '📝' },
+  { id: 'codeexec',     name: 'Code Exec',    port: 8605, icon: '⚙️' },
+];
+
+// ══════════════════════════════════════════════════════════
+//  DEMO PIPELINE DEFINITIONS
+// ══════════════════════════════════════════════════════════
+const PIPELINE_STEPS = [
+  {
+    id: 'vault',
+    icon: '🔐',
+    name: 'Auth0 Token Vault',
+    nameExtra: '<span class="vault-pill" style="margin-left:6px"><span class="vault-dot"></span>RFC 8693</span>',
+    sub_running: 'Exchanging Auth0 refresh_token for scoped GitHub token…',
+    sub_done: 'Scoped GitHub token obtained — never stored, gc\'d after use',
+    cls: 'vault-step',
+    dur: 3200,
+    logs: [
+      { c: 'vault-line', t: 'Auth0 Token Vault — RFC 8693 Token Exchange initiated' },
+      { c: 'vault-line', t: 'POST https://dev-xxxx.auth0.com/oauth/token' },
+      { c: 'vault-line', t: 'grant_type: urn:ietf:params:oauth:grant-type:token-exchange' },
+      { c: 'vault-line', t: 'subject_token_type: urn:ietf:params:oauth:token-type:refresh_token' },
+      { c: 'vault-line', t: 'audience: https://api.github.com — scope: repo read:user' },
+      { c: '', t: 'Waiting for Auth0 introspection response (avg: 180ms)…' },
+      { c: 'ok', t: 'Token exchange successful — HTTP 200' },
+      { c: 'vault-line', t: 'Scoped GitHub token obtained — type: Bearer, expires_in: 3600s' },
+      { c: 'ok', t: 'Token stored in-memory only — will be GC\'d after this request' },
+      { c: '', t: 'Credentials: never written to disk, never logged, never transmitted to sub-agents' },
+      { c: 'ok', t: 'Token Vault handoff to Orchestrator — RFC 8693 exchange complete' },
+    ]
+  },
+  {
+    id: 'orchestrator_read',
+    icon: '🎭',
+    name: 'Orchestrator',
+    nameExtra: '<span class="vault-pill" style="margin-left:6px"><span class="vault-dot"></span>Token Vault</span>',
+    sub_running: 'Reading repository structure via GitHub API…',
+    sub_done: 'GitHub API: read 24 files, 3 open issues — workflow dispatched',
+    cls: '',
+    dur: 4000,
+    logs: [
+      { c: '', t: 'Orchestrator Agent initializing — receiving scoped GitHub token from Vault' },
+      { c: 'ok', t: 'GitHub API connection established — GET /repos/acme-corp/web-app' },
+      { c: '', t: 'Repository: acme-corp/web-app — default branch: main — visibility: private' },
+      { c: '', t: 'Scanning repository tree (depth: 4)…' },
+      { c: '', t: 'Found: 24 files across src/, tests/, config/, docs/' },
+      { c: '', t: 'GET /repos/acme-corp/web-app/issues?state=open&per_page=10' },
+      { c: '', t: 'Open issues: 3 — most recent: "JWT secret exposed in git history"' },
+      { c: 'warn', t: 'Issue #17: CRITICAL — JWT secret exposed in git history (3 days old)' },
+      { c: '', t: 'Parsing goal: "Fix JWT token validation vulnerability and update dependencies"' },
+      { c: '', t: 'Goal mapped to: security_fix workflow — complexity=high' },
+      { c: '', t: 'Spawning sub-agents: Planner :8601, Risks :8603, Code-Exec :8605, Progress :8602, Digest :8604' },
+      { c: 'ok', t: 'All 5 sub-agents responding — orchestration workflow active' },
+    ]
+  },
+  {
+    id: 'planner',
+    icon: '📋',
+    name: 'Planner',
+    sub_running: 'Classifying goal and decomposing into executable tasks…',
+    sub_done: 'STRATEGIC: Classified as security_fix / complexity=high',
+    cls: '',
+    dur: 3500,
+    logs: [
+      { c: '', t: 'Planner Agent initialized — task decomposition engine ready' },
+      { c: '', t: 'Input: "Fix JWT token validation vulnerability and update dependencies"' },
+      { c: '', t: 'Analyzing goal semantics — keyword extraction in progress…' },
+      { c: '', t: 'Keywords detected: [JWT, validation, vulnerability, dependency, fix]' },
+      { c: '', t: 'Task type classification: security_fix (confidence: 0.94)' },
+      { c: 'ok', t: 'STRATEGIC: task_type=security_fix, complexity=high, estimated_hours=4' },
+      { c: '', t: 'Sub-task decomposition:' },
+      { c: 'dim', t: '  1. Identify hardcoded secrets in source tree' },
+      { c: 'dim', t: '  2. Scan dependencies for known CVEs (PyJWT, cryptography)' },
+      { c: 'dim', t: '  3. Generate remediation code — env var injection' },
+      { c: 'dim', t: '  4. Write tests for new auth validation flow' },
+      { c: 'dim', t: '  5. Commit patch + open PR with detailed description' },
+      { c: 'ok', t: 'Plan generated — 5 sub-tasks, critical path length: 3' },
+    ]
+  },
+  {
+    id: 'risks',
+    icon: '⚠️',
+    name: 'Risks',
+    sub_running: 'Running pre-implementation LLM risk analysis…',
+    sub_done: 'LLM risk analysis parsed — 3 issues found, overall_risk=HIGH',
+    cls: '',
+    dur: 4800,
+    logs: [
+      { c: '', t: 'Risks Agent initialized — LLM risk analysis mode active' },
+      { c: '', t: 'Scanning codebase for security anti-patterns…' },
+      { c: 'warn', t: '[ISSUE 1] HARDCODED_SECRET — src/config.py:14' },
+      { c: 'warn', t: '  SECRET_KEY = "my-super-secret-jwt-key-2023"' },
+      { c: 'err', t: '  Severity: HIGH — exposed in version control history (git log)' },
+      { c: 'err', t: '  Risk: session hijacking, token forgery, unauthorized API access' },
+      { c: 'warn', t: '[ISSUE 2] VULNERABLE_DEPENDENCY — requirements.txt:7' },
+      { c: 'warn', t: '  PyJWT==1.7.1 — CVE-2022-29217 (CVSS: 7.5)' },
+      { c: '', t: '  Algorithm confusion attack — key confusion with RS256/HS256' },
+      { c: '', t: '  Fix: upgrade to PyJWT>=2.6.0, add algorithm allowlist' },
+      { c: 'warn', t: '[ISSUE 3] MISSING_EXPIRY_CHECK — src/auth/validate.py:42' },
+      { c: '', t: '  Token expiry (exp claim) not validated on refresh endpoint' },
+      { c: '', t: '  Severity: LOW — allows indefinite session extension via refresh loop' },
+      { c: '', t: 'Aggregating risk scores: max=HIGH (issue 1), weighted_avg=6.8/10' },
+      { c: 'ok', t: 'Risk report complete — overall_risk=HIGH, 3 issues, 0 CRITICAL' },
+    ]
+  },
+  {
+    id: 'codeexec',
+    icon: '⚙️',
+    name: 'Code-Execution',
+    sub_running: 'Generating fix · Running tests · Self-healing debug loop…',
+    sub_done: 'EXECUTION iter 1: 5/5 tests passed — production_ready=true',
+    cls: 'code-step',
+    dur: 7000,
+    prog_cls: 'prog-code',
+    logs: [
+      { c: 'code-line', t: 'Code-Execution Agent online — sandbox environment ready' },
+      { c: 'code-line', t: 'STRATEGIC: Planning JWT secret fix approach' },
+      { c: '', t: '  Strategy: move SECRET_KEY to os.environ["JWT_SECRET_KEY"]' },
+      { c: '', t: '  Add startup validation: raise ValueError if env var missing' },
+      { c: '', t: '  Upgrade PyJWT: 1.7.1 → 2.8.0 with algorithm allowlist' },
+      { c: '', t: '  Add exp claim validation in validate_auth_token()' },
+      { c: 'code-line', t: 'GENERATION: Generating patch code — target: 42 lines' },
+      { c: '', t: '  File: src/config.py — removing hardcoded secret' },
+      { c: '', t: '  File: src/auth/validate.py — adding exp claim check' },
+      { c: '', t: '  File: requirements.txt — upgrading PyJWT to 2.8.0' },
+      { c: 'ok', t: 'GENERATION complete — code_hash: a7f3c9d2, 42 lines generated' },
+      { c: 'code-line', t: 'EXECUTION iter 0: running test suite (5 tests)…' },
+      { c: '', t: '  test_jwt_encode ... PASS' },
+      { c: '', t: '  test_jwt_decode ... PASS' },
+      { c: '', t: '  test_expiry_validation ... PASS' },
+      { c: '', t: '  test_algorithm_allowlist ... PASS' },
+      { c: 'warn', t: '  test_refresh_edge_case ... FAIL — TypeError: NoneType not iterable' },
+      { c: 'warn', t: 'iter 0: 4/5 tests passed — quality_score: 0.74' },
+      { c: 'code-line', t: 'REFLECTION: Analyzing failure in test_refresh_edge_case' },
+      { c: '', t: '  Root cause: validate_auth_token() returns None when header missing' },
+      { c: '', t: '  Fix: add guard clause — return {"valid": false, "reason": "missing_header"}' },
+      { c: 'code-line', t: 'GENERATION: Applying fix — new_hash: b8e1f4a9' },
+      { c: 'code-line', t: 'EXECUTION iter 1: re-running test suite…' },
+      { c: 'ok', t: '  test_jwt_encode ... PASS' },
+      { c: 'ok', t: '  test_jwt_decode ... PASS' },
+      { c: 'ok', t: '  test_expiry_validation ... PASS' },
+      { c: 'ok', t: '  test_algorithm_allowlist ... PASS' },
+      { c: 'ok', t: '  test_refresh_edge_case ... PASS' },
+      { c: 'ok', t: 'EXECUTION iter 1: 5/5 tests passed — quality_score: 0.87 — production_ready=true' },
+    ]
+  },
+  {
+    id: 'orchestrator_pr',
+    icon: '🎭',
+    name: 'Orchestrator',
+    sub_running: 'Creating branch, committing patch, opening Pull Request…',
+    sub_done: 'GitHub: PR #42 created — fix/jwt-security-hardening',
+    cls: '',
+    dur: 3800,
+    logs: [
+      { c: '', t: 'Orchestrator receiving production-ready patch from Code-Exec agent' },
+      { c: '', t: 'GitHub API: creating branch fix/jwt-security-hardening from main' },
+      { c: 'ok', t: 'Branch created: fix/jwt-security-hardening (HEAD: a3f1c8d)' },
+      { c: '', t: 'Committing patch file: src/config.py' },
+      { c: '', t: 'Committing patch file: src/auth/validate.py' },
+      { c: '', t: 'Committing patch file: requirements.txt' },
+      { c: 'ok', t: 'Commit a3f1c8d pushed — "fix(security): move JWT secret to env var, add exp validation"' },
+      { c: '', t: 'Composing PR description — including risk analysis, test results, migration guide' },
+      { c: '', t: 'POST /repos/acme-corp/web-app/pulls' },
+      { c: 'ok', t: 'PR #42 created: https://github.com/acme-corp/web-app/pull/42' },
+      { c: '', t: 'Labels applied: security, high-priority, ai-generated' },
+      { c: '', t: 'Reviewers requested: @security-team, @backend-lead' },
+    ]
+  },
+  {
+    id: 'progress',
+    icon: '📈',
+    name: 'Progress',
+    sub_running: 'Calculating repository health metrics and velocity…',
+    sub_done: 'Velocity: on_track — 12.5% completion rate — urgency: medium',
+    cls: '',
+    dur: 3000,
+    logs: [
+      { c: '', t: 'Progress Agent initialized — sprint health engine ready' },
+      { c: '', t: 'Loading sprint metadata from GitHub Milestones…' },
+      { c: '', t: 'Active sprint: Q1-2025-W12 — started 2025-03-10, ends 2025-03-21' },
+      { c: '', t: 'Sprint issues: 8 total, 1 resolved, 7 open' },
+      { c: '', t: 'Completion rate: 12.5% (1/8 issues resolved this sprint)' },
+      { c: '', t: 'Calculating team velocity: 7-sprint average = 28 story points/sprint' },
+      { c: '', t: 'Remaining capacity: ~22 SP — current issue weight: 8 SP' },
+      { c: 'ok', t: 'Velocity: on_track — team is within normal range' },
+      { c: '', t: 'Urgency assessment: MEDIUM — JWT vulnerability is HIGH severity but PR is open' },
+      { c: 'ok', t: 'Progress report complete — health_status=on_track, urgency=medium' },
+    ]
+  },
+  {
+    id: 'digest',
+    icon: '📝',
+    name: 'Digest',
+    sub_running: 'Generating executive summary and quality report…',
+    sub_done: 'Executive summary generated — quality_state=HEALTHY',
+    cls: '',
+    dur: 3000,
+    logs: [
+      { c: '', t: 'Digest Agent initialized — report generation mode active' },
+      { c: '', t: 'Aggregating outputs from all 6 agents: Orchestrator, Planner, Risks, Code-Exec, Progress, Vault' },
+      { c: '', t: 'Compiling risk findings: 3 issues (HIGH, MEDIUM, LOW)' },
+      { c: '', t: 'Compiling test results: 5/5 passed, quality_score=0.87' },
+      { c: '', t: 'Compiling PR details: #42 — fix/jwt-security-hardening' },
+      { c: '', t: 'Compiling velocity: on_track, 12.5% sprint completion' },
+      { c: '', t: 'Generating executive summary in Markdown…' },
+      { c: 'ok', t: 'Summary generated — 187 words, quality_state=HEALTHY' },
+      { c: '', t: 'Recommendations: rotate exposed JWT secret IMMEDIATELY before merging' },
+      { c: '', t: 'Next pipeline run suggested: after PR #42 merge (auto-trigger via webhook)' },
+      { c: 'ok', t: 'Digest complete — all agent outputs consolidated, report dispatched' },
+    ]
+  },
+];
+
+const DEMO_ISSUES = [
+  {
+    title: 'Hardcoded JWT secret in source code (src/config.py:14)',
+    reasoning: 'Secret exposed in git history — extractable from any git clone. Session hijacking and token forgery at risk.',
+    mitigation: 'Move SECRET_KEY to os.environ["JWT_SECRET_KEY"]. Add startup validation guard. Rotate secret immediately and force-push git history rewrite.',
+    severity: 'high',
+    category: 'security',
+    priority: 'P1'
+  },
+  {
+    title: 'PyJWT 1.7.1 — CVE-2022-29217 (CVSS: 7.5)',
+    reasoning: 'Algorithm confusion attack via RS256/HS256 key confusion. Affects all token decode operations.',
+    mitigation: 'Upgrade to PyJWT>=2.8.0. Add algorithms=["HS256"] allowlist to all jwt.decode() calls. Run pip-audit in CI.',
+    severity: 'medium',
+    category: 'dependency',
+    priority: 'P2'
+  },
+  {
+    title: 'Token expiry (exp claim) not validated on refresh endpoint',
+    reasoning: 'Allows indefinite session extension via refresh loop — attacker can maintain access after password change.',
+    mitigation: 'Add exp claim check in validate_auth_token(). Return 401 if token is expired on refresh. Add integration test.',
+    severity: 'low',
+    category: 'security',
+    priority: 'P3'
+  }
+];
+
+const DEMO_SUMMARY = `## 📋 Summary
+
+The AI agent addressed a **HIGH severity** JWT secret exposure in \`acme-corp/web-app\`. A pull request was created with a complete security patch. The agent executed **5 tests** — all passed on the second iteration after a self-healing debug loop.
+
+## 🔐 Security & Risk
+
+- Overall risk: **HIGH**
+- Issues identified: **3**
+  - [HIGH] Hardcoded JWT secret in source code (src/config.py)
+  - [MEDIUM] Dependency PyJWT 1.7.1 — CVE-2022-29217 (CVSS: 7.5)
+  - [LOW] Token expiry not validated on refresh endpoint
+
+## 🔗 Pull Request
+
+[PR #42: fix(security): move JWT secret to env var + add exp validation](https://github.com/acme-corp/web-app/pull/42)
+
+## ✅ Next Steps
+
+- **Immediately rotate** the exposed JWT secret — it is in git history
+- Review and merge PR #42 after team security review
+- Run \`pip-audit\` in CI to catch future vulnerable dependencies
+- Re-run agent after merge to verify risk level reduction to LOW`;
+
+// ══════════════════════════════════════════════════════════
+//  UTILITY
+// ══════════════════════════════════════════════════════════
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function toast(msg, type = 'inf', icon = 'ℹ️') {
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.innerHTML = `<span>${icon}</span><span>${msg}</span>`;
+  document.getElementById('toasts').appendChild(el);
+  setTimeout(() => el.remove(), 4500);
+}
+
+function setOverall(pct) {
+  document.getElementById('opBar').style.width = pct + '%';
+  document.getElementById('opPct').textContent = Math.round(pct) + '%';
+}
+
+function formatTime(ms) {
+  const s = Math.floor(ms / 1000);
+  return `${String(Math.floor(s / 60)).padStart(2,'0')}:${String(s % 60).padStart(2,'0')}:${String(Math.floor((ms % 1000)/10)).padStart(2,'0')}`;
+}
+
+// ══════════════════════════════════════════════════════════
+//  AGENT HEALTH
+// ══════════════════════════════════════════════════════════
+function renderAgentTile(agent, status) {
+  const tile = document.getElementById(`tile-${agent.id}`);
+  if (!tile) return;
+  tile.className = `agent-tile ${status}`;
+  const pill = tile.querySelector('.agent-status-pill');
+  const dot = tile.querySelector('.status-dot');
+  const labels = { healthy: 'Healthy', offline: 'Offline', connecting: 'Connecting...' };
+  const pillCls = { healthy: 'pill-healthy', offline: 'pill-offline', connecting: 'pill-connecting' };
+  const dotCls = { healthy: 'dot-healthy', offline: 'dot-offline', connecting: 'dot-connecting' };
+  pill.className = `agent-status-pill ${pillCls[status]}`;
+  dot.className = `status-dot ${dotCls[status]}`;
+  pill.querySelector('span:last-child').textContent = labels[status];
+}
+
+function buildAgentGrid() {
+  const grid = document.getElementById('agentsGrid');
+  grid.innerHTML = '';
+  AGENTS.forEach(a => {
+    const el = document.createElement('div');
+    el.className = 'agent-tile offline';
+    el.id = `tile-${a.id}`;
+    el.innerHTML = `
+      <div class="agent-icon">${a.icon}</div>
+      <div class="agent-name">${a.name}</div>
+      <div class="agent-port">:${a.port}</div>
+      <div class="agent-status-pill pill-offline">
+        <span class="status-dot dot-offline"></span>
+        <span>Offline</span>
+      </div>`;
+    grid.appendChild(el);
+  });
+}
+
+async function bringAgentsOnline() {
+  buildAgentGrid();
+  for (const a of AGENTS) {
+    renderAgentTile(a, 'connecting');
+    await sleep(320);
+  }
+  await sleep(500);
+  for (const a of AGENTS) {
+    renderAgentTile(a, 'healthy');
+    await sleep(200);
+  }
+  document.getElementById('agentEnvLabel').textContent = '(demo environment)';
+  toast('All 6 agents online and healthy', 'ok', '✅');
+}
+
+// ══════════════════════════════════════════════════════════
+//  PIPELINE STEP BUILDER
+// ══════════════════════════════════════════════════════════
+function buildStep(stepDef) {
+  const el = document.createElement('div');
+  el.className = `step pending ${stepDef.cls || ''}`;
+  el.id = `step-${stepDef.id}`;
+
+  const progCls = stepDef.prog_cls || 'prog-blue';
+
+  el.innerHTML = `
+    <div class="step-icon">${stepDef.icon}</div>
+    <div class="step-body">
+      <div class="step-top">
+        <div class="step-name">${stepDef.icon !== '🔐' ? stepDef.name : stepDef.name}${stepDef.nameExtra || ''}</div>
+        <div class="step-time" id="time-${stepDef.id}">—</div>
+      </div>
+      <div class="step-sub" id="sub-${stepDef.id}">Waiting…</div>
+      <div class="step-log" id="log-${stepDef.id}"></div>
+      <div class="step-prog" id="prog-${stepDef.id}">
+        <div class="step-prog-fill ${progCls}" id="progfill-${stepDef.id}"></div>
+      </div>
+    </div>`;
+  return el;
+}
+
+async function typeLines(stepId, lines, interval) {
+  const log = document.getElementById(`log-${stepId}`);
+  if (!log) return;
+  log.classList.add('visible');
+  log.innerHTML = '';
+  for (const l of lines) {
+    const span = document.createElement('span');
+    span.className = `log-line ${l.c}`;
+    span.textContent = l.t;
+    log.appendChild(span);
+    log.appendChild(document.createElement('br'));
+    log.scrollTop = log.scrollHeight;
+    await sleep(interval);
+  }
+}
+
+function animateProg(stepId, dur) {
+  const prog = document.getElementById(`prog-${stepId}`);
+  const fill = document.getElementById(`progfill-${stepId}`);
+  if (!prog || !fill) return;
+  prog.classList.add('visible');
+  let start = null;
+  (function frame(ts) {
+    if (!start) start = ts;
+    const pct = Math.min(((ts - start) / dur) * 100, 100);
+    fill.style.width = pct + '%';
+    if (pct < 100) requestAnimationFrame(frame);
+    else prog.classList.remove('visible');
+  })(performance.now());
+}
+
+// ══════════════════════════════════════════════════════════
+//  MAIN DEMO PIPELINE
+// ══════════════════════════════════════════════════════════
+async function runDemoPipeline() {
+  if (isRunning) return;
+  isRunning = true;
+
+  // Reset UI
+  resetUI(false);
+  isDemoMode = true;
+  document.getElementById('demoBadge').classList.add('active');
+  document.getElementById('demoWm').classList.add('visible');
+
+  // Bring agents online
+  await bringAgentsOnline();
+  await sleep(400);
+
+  // Show vault badge in header
+  document.getElementById('vaultBadge').style.display = 'inline-flex';
+
+  // Show vault banner
+  document.getElementById('vaultBanner').classList.add('visible');
+  toast('Auth0 Token Vault active — RFC 8693', 'inf', '🔐');
+
+  // Overall progress
+  document.getElementById('overallProg').classList.add('visible');
+  document.getElementById('pipelineBadge').className = 'pipeline-badge badge-running';
+  document.getElementById('pipelineBadge').textContent = 'RUNNING';
+  document.getElementById('pipelineSpinner').classList.add('visible');
+
+  // Build all step elements
+  const container = document.getElementById('pipelineSteps');
+  container.innerHTML = '';
+  PIPELINE_STEPS.forEach(s => container.appendChild(buildStep(s)));
+
+  const total = PIPELINE_STEPS.length;
+  const pipelineStart = Date.now();
+
+  for (let i = 0; i < PIPELINE_STEPS.length; i++) {
+    const s = PIPELINE_STEPS[i];
+    const stepEl = document.getElementById(`step-${s.id}`);
+    const logEl = document.getElementById(`log-${s.id}`);
+    const subEl = document.getElementById(`sub-${s.id}`);
+    const timeEl = document.getElementById(`time-${s.id}`);
+
+    const pctStart = (i / total) * 100;
+    const pctEnd = ((i + 1) / total) * 100;
+
+    // Mark running
+    stepEl.className = `step running ${s.cls || ''}`;
+    subEl.textContent = s.sub_running;
+    timeEl.textContent = '...';
+    setOverall(pctStart);
+    stepEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+    // Animate overall progress while step runs
+    const interval = setInterval(() => {
+      const elapsed = Date.now() - (pipelineStart + PIPELINE_STEPS.slice(0, i).reduce((a,p) => a + p.dur, 0));
+      const frac = Math.min(elapsed / s.dur, 1);
+      setOverall(pctStart + frac * (pctEnd - pctStart));
+    }, 80);
+
+    // Animate per-step progress bar + type logs
+    animateProg(s.id, s.dur);
+    const lineInterval = Math.max(60, Math.floor(s.dur / (s.logs.length + 3)));
+    await typeLines(s.id, s.logs, lineInterval);
+    clearInterval(interval);
+
+    // Mark complete
+    stepEl.className = `step complete ${s.cls || ''}`;
+    subEl.textContent = s.sub_done;
+
+    const stepElapsed = Date.now() - pipelineStart - PIPELINE_STEPS.slice(0, i).reduce((a,p) => a + p.dur, 0);
+    timeEl.textContent = formatTime(stepElapsed);
+
+    setOverall(pctEnd);
+
+    // After orchestrator PR step: show PR banner
+    if (s.id === 'orchestrator_pr') {
+      document.getElementById('prBanner').classList.add('visible');
+      document.getElementById('prUrl').innerHTML = '<a href="https://github.com/acme-corp/web-app/pull/42" target="_blank">https://github.com/acme-corp/web-app/pull/42</a>';
+      toast('PR #42 created successfully!', 'ok', '🎉');
     }
 
-    // ══════════════════════════════════════════════════════
-    //  DEMO MODE
-    // ══════════════════════════════════════════════════════
-    function runDemoMode() {
-        console.log('🎬 Demo Mode — simulating 6-agent pipeline');
-        setModeBadge('demo', '🧪 DEMO MODE');
-        hidePRBanner();
-        hideVaultBanner();
-
-        // Animate pipeline steps one by one
-        const pipeline = document.getElementById('pipelineView');
-        pipeline.innerHTML = '';
-
-        const steps = [
-            { icon: '🔐', agent: 'Auth0 Token Vault', status: 'Exchanging refresh_token → scoped GitHub token (RFC 8693)…', cls: 'vault running' },
-            { icon: '📋', agent: 'Planner Agent', status: 'Classifying goal and decomposing tasks…', cls: 'running' },
-            { icon: '⚠️', agent: 'Risks Agent', status: 'Running pre-implementation risk assessment…', cls: 'running' },
-            { icon: '⚙️', agent: 'Code Execution', status: 'Generating fix · Running tests · Debug loop…', cls: 'running' },
-            { icon: '📈', agent: 'Progress Agent', status: 'Calculating repo health metrics…', cls: 'running' },
-            { icon: '📝', agent: 'Digest Agent', status: 'Building executive summary…', cls: 'running' },
-        ];
-
-        steps.forEach((s, i) => {
-            setTimeout(() => {
-                const el = buildPipelineStep(s.icon, s.agent, s.status, s.cls, null, null);
-                pipeline.appendChild(el);
-            }, i * 400);
-        });
-
-        // After animation → show results
-        setTimeout(() => {
-            renderResults(DEMO_RESULT, 'demo');
-        }, steps.length * 400 + 800);
+    // After digest: show issues + summary + stats
+    if (s.id === 'digest') {
+      renderIssues(DEMO_ISSUES);
+      renderSummary(DEMO_SUMMARY, { quality_score: 0.87, production_ready: true });
+      animateStat('statRisk', 'HIGH', 'var(--red)');
+      animateStat('statIssues', '3', 'var(--orange)');
+      animateStat('statTests', '5/5', 'var(--green)');
+      animateStat('statPR', '#42', 'var(--green)');
     }
 
-    // ══════════════════════════════════════════════════════
-    //  REAL MODE
-    // ══════════════════════════════════════════════════════
-    async function runRealPipeline() {
-        const repo    = document.getElementById('repoInput').value.trim();
-        const goal    = document.getElementById('goalInput').value.trim();
-        const token   = document.getElementById('refreshTokenInput').value.trim();
-        const baseUrl = document.getElementById('orchestratorUrl').value.trim();
+    await sleep(250);
+  }
 
-        if (!repo) { alert('Please enter a GitHub repository (owner/repo)'); return; }
-        if (!goal) { alert('Please describe the goal for the agent'); return; }
-        // token is OPTIONAL — if empty, orchestrator uses AUTH0_REFRESH_TOKEN from .env
+  // Pipeline complete
+  setOverall(100);
+  document.getElementById('overallProg').classList.remove('visible');
+  document.getElementById('pipelineBadge').className = 'pipeline-badge badge-complete';
+  document.getElementById('pipelineBadge').textContent = 'COMPLETE';
+  document.getElementById('pipelineSpinner').classList.remove('visible');
 
-        const btn = document.getElementById('startBtn');
-        const runBtn = document.getElementById('runBtn');
-        btn.disabled = runBtn.disabled = true;
-        btn.innerHTML = '⏳ Running…';
-        runBtn.innerHTML = '⏳ Running…';
+  toast('6-agent pipeline complete!', 'ok', '🎉');
+  isRunning = false;
+}
 
-        setModeBadge('live', '🔗 LIVE MODE');
-        hidePRBanner();
-        hideVaultBanner();
+function animateStat(id, val, color) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.style.color = color;
+  el.textContent = val;
+}
 
-        renderPipelineRunning();
+// ══════════════════════════════════════════════════════════
+//  ISSUES TABLE
+// ══════════════════════════════════════════════════════════
+function renderIssues(issues) {
+  const wrap = document.getElementById('issuesWrap');
+  const rows = issues.map((iss, i) => {
+    const sevClass = `sev-${iss.severity}`;
+    const priClass = `pri-${iss.priority.toLowerCase()}`;
+    return `
+      <tr onclick="toggleMitigation(${i})" style="cursor:pointer">
+        <td>
+          <span class="issue-title-main">${esc(iss.title)}</span>
+          <span class="issue-reasoning">${esc(iss.reasoning)}</span>
+          <div class="mitigation-block" id="mit-${i}">
+            <strong>Mitigation:</strong> ${esc(iss.mitigation)}
+          </div>
+        </td>
+        <td style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-dim)">${esc(iss.category)}</td>
+        <td><span class="sev-badge ${sevClass}">${iss.severity.toUpperCase()}</span></td>
+        <td><span class="pri-badge ${priClass}">${iss.priority}</span></td>
+      </tr>`;
+  }).join('');
 
-        // Build params — include token only if user pasted one in the field.
-        // If empty, orchestrator reads AUTH0_REFRESH_TOKEN from its own .env.
-        const params = { repo, goal };
-        if (token) params.auth0_refresh_token = token;
+  wrap.innerHTML = `
+    <table class="issue-table">
+      <thead>
+        <tr>
+          <th>Issue</th>
+          <th>Category</th>
+          <th>Severity</th>
+          <th>Priority</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
 
-        try {
-            const resp = await fetch(`${baseUrl}/mcp`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    id: Date.now(),
-                    method: 'run_secure_devops_flow',
-                    params
-                })
-            });
+function toggleMitigation(i) {
+  document.querySelectorAll('.mitigation-block').forEach((el, j) => {
+    if (j !== i) el.classList.remove('open');
+  });
+  const el = document.getElementById(`mit-${i}`);
+  if (el) el.classList.toggle('open');
+}
 
-            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-            const data = await resp.json();
+// ══════════════════════════════════════════════════════════
+//  EXECUTIVE SUMMARY
+// ══════════════════════════════════════════════════════════
+function renderSummary(md, metrics) {
+  const card = document.getElementById('summaryCard');
+  const body = document.getElementById('summaryBody');
+  const qual = document.getElementById('summaryQuality');
+  card.style.display = 'block';
 
-            if (data.error) {
-                renderError(data.error, data.details);
-                return;
-            }
-            renderResults(data, 'live');
-        } catch (err) {
-            // Auto-fallback: if backend unreachable, offer demo with explanation
-            const isLocalhost = baseUrl.includes('localhost') || baseUrl.includes('127.0.0.1');
-            const hint = isLocalhost
-                ? 'Run Docker locally: docker compose up\n\nOr use Run Demo Mode to see a full simulation.'
-                : `Check that the backend is deployed and CORS is enabled.\n\n${err.message}`;
-            renderError('Backend Unreachable', `Cannot connect to Orchestrator at ${baseUrl}.\n\n${hint}`);
-            // Auto-switch to demo mode after 3 seconds
-            setTimeout(() => { runDemoMode(); }, 3000);
-        } finally {
-            btn.disabled = runBtn.disabled = false;
-            btn.innerHTML = '🚀 Run Agent Pipeline';
-            runBtn.innerHTML = '▶ Run Agent';
-        }
-    }
+  if (metrics?.quality_score) {
+    const pct = Math.round(metrics.quality_score * 100);
+    qual.textContent = `Code quality: ${pct}% · ${metrics.production_ready ? '✓ Production ready' : '⚠ Review needed'}`;
+  }
 
-    // ══════════════════════════════════════════════════════
-    //  RENDER RESULTS
-    // ══════════════════════════════════════════════════════
-    function renderResults(data, mode) {
-        // Token Vault banner
-        if (data.token_vault_used) {
-            document.getElementById('vaultProofBanner').classList.add('visible');
-            document.getElementById('tokenVaultBadge').style.display = 'inline-flex';
-        }
+  let html = esc(md)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^- (.+)$/gm, '<li>$1</li>')
+    .replace(/(<li>[\s\S]*?<\/li>(\s*<li>[\s\S]*?<\/li>)*)/g, '<ul>$1</ul>')
+    .replace(/\n{2,}/g, '<br>');
 
-        // PR Banner
-        if (data.pr_url) {
-            const banner = document.getElementById('prResultBanner');
-            banner.classList.add('visible');
-            document.getElementById('prResultUrl').innerHTML =
-                `<a href="${data.pr_url}" target="_blank">${data.pr_url}</a>`;
-        }
+  body.innerHTML = html;
+}
 
-        // Stats
-        const risk = (data.risk_level || '—');
-        const riskColors = { CRITICAL:'var(--critical)', HIGH:'var(--error)', MEDIUM:'var(--warning)', LOW:'var(--success)' };
-        document.getElementById('statRisk').style.color = riskColors[risk] || 'var(--auth0-orange)';
-        document.getElementById('statRisk').textContent = risk;
-        document.getElementById('statIssues').textContent = data.issues_found ?? (data.issues?.length ?? '—');
-        const ts = data.test_suite || data.quality_metrics || {};
-        const passed = ts.tests_passed ?? (ts.production_ready ? '✓' : '—');
-        const total  = ts.tests_count ?? ts.tests_total ?? '';
-        document.getElementById('statTests').textContent = total ? `${passed}/${total}` : passed;
-        document.getElementById('statPR').textContent = data.pr_number ? `#${data.pr_number}` : (data.pr_url ? '✓' : '—');
-        document.getElementById('statTests').style.color = (ts.production_ready || ts.tests_failed === 0) ? 'var(--success)' : 'var(--error)';
+// ══════════════════════════════════════════════════════════
+//  PUBLIC ACTIONS
+// ══════════════════════════════════════════════════════════
+function runDemo() { runDemoPipeline(); }
+function runAgent() { runDemoPipeline(); }
 
-        // Pipeline steps from reasoning trail
-        renderPipelineFromReasoning(data.reasoning || [], data);
+function toggleDemoMode() {
+  isDemoMode = !isDemoMode;
+  document.getElementById('demoBadge').classList.toggle('active', isDemoMode);
+  document.getElementById('demoWm').classList.toggle('visible', isDemoMode);
+  toast(isDemoMode ? 'Demo mode enabled' : 'Demo mode disabled', 'inf', '🧪');
+}
 
-        // Issues table
-        renderIssuesTable(data.issues || []);
+function resetAll() {
+  if (isRunning) { toast('Pipeline is running — please wait', 'wrn', '⚠️'); return; }
+  resetUI(true);
+  toast('Dashboard reset', 'inf', '🔄');
+}
 
-        // Summary
-        if (data.summary) renderSummary(data.summary, data.quality_metrics);
-    }
+function resetUI(rebuildAgents) {
+  document.getElementById('vaultBanner').classList.remove('visible');
+  document.getElementById('prBanner').classList.remove('visible');
+  document.getElementById('overallProg').classList.remove('visible');
+  document.getElementById('vaultBadge').style.display = 'none';
+  document.getElementById('pipelineBadge').className = 'pipeline-badge badge-idle';
+  document.getElementById('pipelineBadge').textContent = 'IDLE';
+  document.getElementById('pipelineSpinner').classList.remove('visible');
+  document.getElementById('summaryCard').style.display = 'none';
+  document.getElementById('issuesWrap').innerHTML = '<div class="empty-state"><div class="empty-state-icon">📭</div><div>No pipeline run yet</div></div>';
+  ['statRisk','statIssues','statTests','statPR'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.textContent = '—'; el.style.color = 'var(--orange)'; }
+  });
+  document.getElementById('pipelineSteps').innerHTML = `
+    <div class="step pending" style="opacity:0.5">
+      <div class="step-icon">⏸️</div>
+      <div class="step-body">
+        <div class="step-name">Pipeline Idle</div>
+        <div class="step-sub">Click <strong>Run Demo</strong> to watch the 6-agent pipeline in action</div>
+      </div>
+    </div>`;
+  if (rebuildAgents) {
+    buildAgentGrid();
+    isDemoMode = false;
+    document.getElementById('demoBadge').classList.remove('active');
+    document.getElementById('demoWm').classList.remove('visible');
+    document.getElementById('agentEnvLabel').textContent = '';
+  }
+}
 
-    function renderPipelineFromReasoning(reasoning, data) {
-        const pipeline = document.getElementById('pipelineView');
-        pipeline.innerHTML = '';
+function esc(str) {
+  if (typeof str !== 'string') return String(str || '');
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
 
-        if (!reasoning.length) {
-            renderPipelineSuccess(data);
-            return;
-        }
-
-        const agentIcons = {
-            'Orchestrator': '🎭', 'Planner': '📋', 'Risks': '⚠️',
-            'Code-Execution': '⚙️', 'Progress': '📈', 'Digest': '📝',
-        };
-
-        // Group by agent for clean display
-        const groups = [];
-        let last = null;
-        for (const step of reasoning) {
-            if (!last || last.agent !== step.agent) {
-                last = { agent: step.agent, icon: agentIcons[step.agent] || '🤖', steps: [] };
-                groups.push(last);
-            }
-            last.steps.push(step);
-        }
-
-        for (const grp of groups) {
-            const lastStep = grp.steps[grp.steps.length - 1];
-            const reasoningHtml = grp.steps.map(s =>
-                `<div class="reasoning-step-item"><span class="reasoning-step-num">${s.step_number}.</span><span>${escapeHtml(s.description)}</span></div>`
-            ).join('');
-
-            const isVault = grp.agent === 'Orchestrator' && grp.steps[0]?.description?.toLowerCase().includes('vault');
-            const stepEl = document.createElement('div');
-            stepEl.className = `pipeline-step success${isVault ? ' vault' : ''}`;
-            stepEl.innerHTML = `
-                <div class="pipeline-icon">${grp.icon}</div>
-                <div class="pipeline-content">
-                    <div class="pipeline-agent">
-                        ${escapeHtml(grp.agent)}
-                        ${grp.agent === 'Orchestrator' && grp.steps.some(s => s.description?.includes('Token Vault')) ? '<span class="vault-pill" style="margin-left:6px;"><span class="vault-dot"></span>Token Vault</span>' : ''}
-                    </div>
-                    <div class="pipeline-status">${escapeHtml(lastStep.description)}</div>
-                    <button class="reasoning-toggle" onclick="toggleReasoning(this)">
-                        ▶ ${grp.steps.length} reasoning step${grp.steps.length > 1 ? 's' : ''}
-                    </button>
-                    <div class="reasoning-steps">${reasoningHtml}</div>
-                </div>
-                <div class="pipeline-time">${new Date().toLocaleTimeString()}</div>`;
-            pipeline.appendChild(stepEl);
-        }
-    }
-
-    function renderPipelineRunning() {
-        const pipeline = document.getElementById('pipelineView');
-        const stepsData = [
-            { icon: '🔐', agent: 'Auth0 Token Vault',  status: 'Exchanging tokens via RFC 8693…' },
-            { icon: '🎭', agent: 'Orchestrator',        status: 'Reading repository structure…' },
-            { icon: '📋', agent: 'Planner Agent',       status: 'Classifying goal…' },
-            { icon: '⚠️', agent: 'Risks Agent',         status: 'Assessing pre-implementation risks…' },
-            { icon: '⚙️', agent: 'Code Execution',      status: 'Generating fix and running tests…' },
-            { icon: '📈', agent: 'Progress Agent',      status: 'Calculating health metrics…' },
-            { icon: '📝', agent: 'Digest Agent',        status: 'Building executive summary…' },
-        ];
-        pipeline.innerHTML = stepsData.map(s => `
-            <div class="pipeline-step running">
-                <div class="pipeline-icon">${s.icon}</div>
-                <div class="pipeline-content">
-                    <div class="pipeline-agent">${s.agent}</div>
-                    <div class="pipeline-status">${s.status}</div>
-                </div>
-                <div class="loader"></div>
-            </div>`).join('');
-    }
-
-    function renderPipelineSuccess(data) {
-        const pipeline = document.getElementById('pipelineView');
-        pipeline.innerHTML = `
-            <div class="pipeline-step vault">
-                <div class="pipeline-icon">🔐</div>
-                <div class="pipeline-content">
-                    <div class="pipeline-agent">Auth0 Token Vault <span class="vault-pill" style="margin-left:6px;"><span class="vault-dot"></span>RFC 8693</span></div>
-                    <div class="pipeline-status">Scoped GitHub token obtained — never stored, gc'd after use</div>
-                </div>
-                <div class="pipeline-time">${new Date().toLocaleTimeString()}</div>
-            </div>
-            <div class="pipeline-step success">
-                <div class="pipeline-icon">✓</div>
-                <div class="pipeline-content">
-                    <div class="pipeline-agent">Pipeline Complete</div>
-                    <div class="pipeline-status">6-agent orchestration finished successfully</div>
-                </div>
-                <div class="pipeline-time">${new Date().toLocaleTimeString()}</div>
-            </div>`;
-    }
-
-    function renderError(title, detail) {
-        const pipeline = document.getElementById('pipelineView');
-        pipeline.innerHTML += `
-            <div class="error-box">
-                <div class="error-box-title">✗ ${escapeHtml(title)}</div>
-                <div style="font-size:13px;color:var(--text-dim);white-space:pre-wrap;">${escapeHtml(detail || '')}</div>
-                <div style="font-size:12px;color:var(--text-dim);margin-top:8px;">
-                    You can still use <strong>Run Demo</strong> to see how the system works.
-                </div>
-            </div>`;
-    }
-
-    // ══════════════════════════════════════════════════════
-    //  ISSUES TABLE
-    // ══════════════════════════════════════════════════════
-    function renderIssuesTable(issues) {
-        const container = document.getElementById('issuesContainer');
-        if (!issues.length) {
-            container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">✅</div><div class="empty-state-text">No issues found</div></div>`;
-            return;
-        }
-
-        const severityMap = { critical: 'risk-critical', high: 'risk-high', medium: 'risk-medium', low: 'risk-low' };
-        const rows = issues.map((issue, i) => `
-            <tr onclick="toggleIssueDetails(${i})">
-                <td>
-                    <strong>${escapeHtml(issue.title || issue.name || 'Issue ' + (i+1))}</strong>
-                    <div class="issue-expand" id="issue-expand-${i}">
-                        <div class="issue-expand-label">Mitigation</div>
-                        <div class="issue-expand-val">${escapeHtml(issue.mitigation || issue.mitigation_strategy || 'Review and address manually')}</div>
-                        ${issue.reasoning ? `<div class="issue-expand-label" style="margin-top:8px;">Reasoning</div><div class="issue-expand-val">${escapeHtml(issue.reasoning)}</div>` : ''}
-                    </div>
-                </td>
-                <td>${issue.category ? `<span style="font-size:12px;color:var(--text-dim);font-family:'JetBrains Mono',monospace;">${escapeHtml(issue.category)}</span>` : '—'}</td>
-                <td><span class="risk-badge ${severityMap[issue.severity?.toLowerCase()] || 'risk-low'}">${escapeHtml((issue.severity || 'LOW').toUpperCase())}</span></td>
-                <td><span class="priority-badge ${(issue.priority || 'p3').toLowerCase()}">${escapeHtml(issue.priority || 'P3')}</span></td>
-            </tr>`).join('');
-
-        container.innerHTML = `
-            <table class="results-table">
-                <thead>
-                    <tr>
-                        <th>Issue</th><th>Category</th><th>Severity</th><th>Priority</th>
-                    </tr>
-                </thead>
-                <tbody>${rows}</tbody>
-            </table>`;
-    }
-
-    function toggleIssueDetails(i) {
-        document.querySelectorAll('[id^="issue-expand-"]').forEach((el, j) => {
-            if (j !== i) el.classList.remove('open');
-        });
-        const el = document.getElementById(`issue-expand-${i}`);
-        if (el) el.classList.toggle('open');
-    }
-
-    // ══════════════════════════════════════════════════════
-    //  EXECUTIVE SUMMARY — simple markdown renderer
-    // ══════════════════════════════════════════════════════
-    function renderSummary(md, metrics) {
-        const card = document.getElementById('summaryCard');
-        const div  = document.getElementById('summaryMarkdown');
-        const qual = document.getElementById('summaryQuality');
-        card.style.display = 'block';
-
-        if (metrics) {
-            const score = metrics.quality_score ? Math.round(metrics.quality_score * 100) : null;
-            qual.textContent = score ? `Code quality: ${score}% · ${metrics.production_ready ? '✓ Production ready' : '⚠ Review needed'}` : '';
-        }
-
-        // Minimal markdown → HTML
-        let html = escapeHtml(md)
-            .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-            .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
-            .replace(/`([^`]+)`/g, '<code>$1</code>')
-            .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-            .replace(/^- (.+)$/gm, '<li>$1</li>')
-            .replace(/(<li>.*<\/li>)/gs, '<ul>$1</ul>')
-            .replace(/\n{2,}/g, '\n');
-
-        div.innerHTML = html;
-    }
-
-    // ══════════════════════════════════════════════════════
-    //  HELPERS
-    // ══════════════════════════════════════════════════════
-    function setModeBadge(mode, text) {
-        const badge = document.getElementById('modeBadge');
-        badge.className = `mode-badge ${mode}`;
-        badge.textContent = text;
-        badge.style.display = 'inline-flex';
-    }
-
-    function hideVaultBanner() {
-        document.getElementById('vaultProofBanner').classList.remove('visible');
-        document.getElementById('tokenVaultBadge').style.display = 'none';
-    }
-
-    function hidePRBanner() {
-        document.getElementById('prResultBanner').classList.remove('visible');
-    }
-
-    function toggleReasoning(btn) {
-        const steps = btn.nextElementSibling;
-        steps.classList.toggle('open');
-        btn.textContent = steps.classList.contains('open')
-            ? btn.textContent.replace('▶', '▼')
-            : btn.textContent.replace('▼', '▶');
-    }
-
-    function buildPipelineStep(icon, agent, status, cls, time, reasoning) {
-        const el = document.createElement('div');
-        el.className = `pipeline-step ${cls}`;
-        el.innerHTML = `
-            <div class="pipeline-icon">${icon}</div>
-            <div class="pipeline-content">
-                <div class="pipeline-agent">${agent}</div>
-                <div class="pipeline-status">${status}</div>
-                ${reasoning ? `<div class="pipeline-reasoning">${reasoning}</div>` : ''}
-            </div>
-            ${time ? `<div class="pipeline-time">${time}</div>` : '<div class="loader"></div>'}`;
-        return el;
-    }
-
-    function escapeHtml(str) {
-        if (typeof str !== 'string') return String(str || '');
-        return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-                  .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
-    }
-
-    // ══════════════════════════════════════════════════════
-    //  INIT
-    // ══════════════════════════════════════════════════════
-    window.addEventListener('DOMContentLoaded', () => {
-        refreshAgents();
-    });
-    </script>
+// ══════════════════════════════════════════════════════════
+//  INIT — auto-start demo on page load (Netlify deploy)
+// ══════════════════════════════════════════════════════════
+window.addEventListener('DOMContentLoaded', () => {
+  buildAgentGrid();
+  // Auto-start: bring agents online immediately
+  setTimeout(() => {
+    isDemoMode = true;
+    document.getElementById('demoBadge').classList.add('active');
+    document.getElementById('demoWm').classList.add('visible');
+    bringAgentsOnline();
+  }, 600);
+});
+</script>
 </body>
 </html>
