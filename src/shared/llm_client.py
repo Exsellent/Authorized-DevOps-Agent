@@ -8,7 +8,7 @@ Backend routing: configured via environment (see .env)
 import asyncio
 import logging
 import os
-from typing import Any, Dict, Optional
+from typing import Dict, Any, Optional
 
 import httpx
 
@@ -17,177 +17,127 @@ logger = logging.getLogger("llm_client")
 
 class LLMClient:
     """
-    Anthropic Claude client for multi-agent DevOps pipeline.
+    Anthropic Claude client for multi-agent DevOps system.
 
-    Uses Claude 3.5 Sonnet for all agent reasoning:
-    - Planner: task classification and decomposition
-    - Risks: proactive security assessment
-    - Code Execution: fix generation and test writing
-    - Progress: velocity analysis
-    - Digest: executive summary generation
-
-    Configuration via environment variables::
-
-        ANTHROPIC_API_KEY   — Claude API key
-        ANTHROPIC_BASE_URL  — API endpoint (default: Anthropic direct)
-        ANTHROPIC_MODEL     — Model name (default: claude-3-5-sonnet-20241022)
+    Features:
+    - Retry with exponential backoff on 429 and transient errors
+    - Persistent HTTP connection pool
+    - UTF-8 safe for Docker slim images
     """
 
-    # Shown in logs and UI — always Claude branding
-    _PROVIDER_DISPLAY = "Anthropic Claude"
+    DEFAULT_TEMPERATURE = 0.7
+    DEFAULT_MAX_TOKENS = 2048
+    MAX_RETRIES = 3
 
     def __init__(self):
-        self.api_key   = os.getenv("ANTHROPIC_API_KEY", "")
-        self.base_url  = os.getenv(
-            "ANTHROPIC_BASE_URL",
-            "https://api.anthropic.com/v1/messages"   # direct Anthropic default
+        # Anthropic API config
+        self.api_key = os.getenv("ANTHROPIC_API_KEY")
+        self.base_url = os.getenv(
+            "ANTHROPIC_BASE_URL", "https://openrouter.ai/api/v1/chat/completions"
         )
-        self.model     = os.getenv(
-            "ANTHROPIC_MODEL",
-            "claude-3-5-sonnet-20241022"
-        )
-        self.timeout   = float(os.getenv("LLM_TIMEOUT_SECONDS", "60"))
-        self.max_tokens = int(os.getenv("LLM_MAX_TOKENS", "2048"))
+        self.model = os.getenv("ANTHROPIC_MODEL", "anthropic/claude-3-5-sonnet-20241022")
+        self.enabled = bool(self.api_key)
 
-        if not self.api_key:
-            raise RuntimeError(
-                "ANTHROPIC_API_KEY is required. "
-                "Set it in .env (see .env.example)."
+        if not self.enabled:
+            logger.warning(
+                "ANTHROPIC_API_KEY not set. LLM client disabled; chat calls return error messages."
             )
-
-        # Detect if routing through a proxy/gateway
-        self._via_gateway = "anthropic.com" not in self.base_url
-
-        logger.info(
-            "LLMClient ready — provider=%s model=%s gateway=%s",
-            self._PROVIDER_DISPLAY, self.model, self._via_gateway,
-        )
-
-    # ── Internal: build request depending on endpoint type ────────────────────
-
-    def _build_request(self, prompt: str) -> tuple[dict, dict]:
-        """
-        Returns (headers, payload) adapted to the endpoint.
-
-        Anthropic native endpoint uses a different schema than
-        OpenAI-compatible endpoints (OpenRouter, etc.).
-        """
-        if self._via_gateway:
-            # OpenAI-compatible schema (OpenRouter / proxy)
-            headers = {
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type":  "application/json",
-                "HTTP-Referer":  "https://devpost.com",
-                "X-Title":       "Authorized DevOps Agent — Auth0 Hackathon",
-            }
-            payload = {
-                "model":       self.model,
-                "messages":    [{"role": "user", "content": prompt}],
-                "max_tokens":  self.max_tokens,
-                "temperature": 0.7,
-            }
         else:
-            # Native Anthropic Messages API
-            headers = {
-                "x-api-key":         self.api_key,
-                "anthropic-version": "2023-06-01",
-                "Content-Type":      "application/json",
-            }
-            payload = {
-                "model":       self.model,
-                "max_tokens":  self.max_tokens,
-                "messages":    [{"role": "user", "content": prompt}],
-            }
+            logger.info("LLM Client initialized", extra={"model": self.model})
 
-        return headers, payload
+        # Safe headers: no non-ASCII characters
+        self._headers = {
+            "Authorization": f"Bearer {self.api_key}" if self.enabled else "",
+            "Content-Type": "application/json",
+            "HTTP-Referer": os.getenv("LLM_REFERER", "https://devpost.com"),
+            "X-Title": "Authorized DevOps Agent - Auth0 Hackathon",  # only ASCII!
+        }
 
-    def _parse_response(self, data: dict) -> str:
-        """
-        Extract text from response, handling both API schemas.
-        """
-        # Native Anthropic → data["content"][0]["text"]
-        if "content" in data and isinstance(data["content"], list):
-            return data["content"][0].get("text", "").strip()
+        # Persistent client
+        self._client: Optional[httpx.AsyncClient] = None
+        # Force UTF-8 in Python runtime
+        os.environ["PYTHONIOENCODING"] = "utf-8"
+        os.environ["LANG"] = "C.UTF-8"
 
-        # OpenAI-compatible → data["choices"][0]["message"]["content"]
-        if "choices" in data:
-            return data["choices"][0]["message"]["content"].strip()
+    async def _get_client(self) -> httpx.AsyncClient:
+        if not self.enabled:
+            return httpx.AsyncClient()
 
-        raise ValueError(f"Unrecognised response shape: {list(data.keys())}")
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=60.0)
+        return self._client
 
-    # ── Public API ────────────────────────────────────────────────────────────
+    async def close(self):
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
+            self._client = None
 
-    async def chat(self, prompt: str, max_retries: int = 3) -> str:
-        """
-        Send a prompt to Claude and return the text response.
-
-        Retries on 429 (rate limit) with exponential backoff.
-        Returns an error-marker string on terminal failure so callers
-        can detect it via _is_invalid_response() without crashing.
-        """
-        headers, payload = self._build_request(prompt)
-
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            for attempt in range(max_retries):
-                try:
-                    resp = await client.post(
-                        self.base_url, json=payload, headers=headers
-                    )
-
-                    if resp.status_code == 429:
-                        wait = 2 ** attempt
-                        logger.warning(
-                            "Rate limit hit (attempt %d/%d) — retrying in %ds",
-                            attempt + 1, max_retries, wait,
-                        )
-                        await asyncio.sleep(wait)
-                        continue
-
-                    resp.raise_for_status()
-                    return self._parse_response(resp.json())
-
-                except httpx.TimeoutException:
-                    logger.warning(
-                        "LLM request timed out (attempt %d/%d)",
-                        attempt + 1, max_retries,
-                    )
-                    if attempt == max_retries - 1:
-                        return "[claude error] Request timed out"
-                    await asyncio.sleep(2 ** attempt)
-
-                except httpx.HTTPStatusError as exc:
-                    logger.error(
-                        "LLM HTTP error %d (attempt %d/%d): %s",
-                        exc.response.status_code, attempt + 1, max_retries, exc,
-                    )
-                    if attempt == max_retries - 1:
-                        return f"[claude error] HTTP {exc.response.status_code}"
-                    await asyncio.sleep(2 ** attempt)
-
-                except Exception as exc:
-                    logger.error(
-                        "LLM call failed (attempt %d/%d): %s",
-                        attempt + 1, max_retries, exc,
-                    )
-                    if attempt == max_retries - 1:
-                        return f"[claude error] {exc}"
-                    await asyncio.sleep(2 ** attempt)
-
-        return "[claude error] Rate limit exceeded after all retries"
-
-    async def chat_structured(
+    async def chat(
         self,
-        prompt:      str,
-        system:      Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """
-        Extended call returning provider metadata alongside raw text.
-        Useful for debugging and agent Observatory UI.
-        """
-        full_prompt = f"{system}\n\n{prompt}" if system else prompt
-        text = await self.chat(full_prompt)
+        prompt: str,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+        max_retries: Optional[int] = None,
+    ) -> str:
+        if not self.enabled:
+            return "[LLM error] ANTHROPIC_API_KEY not set"
+
+        payload = {
+            "model": self.model,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max_tokens or self.DEFAULT_MAX_TOKENS,
+            "temperature": temperature if temperature is not None else self.DEFAULT_TEMPERATURE,
+        }
+
+        client = await self._get_client()
+        retries = max_retries or self.MAX_RETRIES
+        last_error: Optional[Exception] = None
+
+        for attempt in range(retries):
+            try:
+                resp = await client.post(self.base_url, json=payload, headers=self._headers)
+
+                if resp.status_code == 429:
+                    wait = 2 ** attempt
+                    logger.warning(f"Rate limited (429), retrying in {wait}s (attempt {attempt+1})")
+                    await asyncio.sleep(wait)
+                    continue
+
+                resp.raise_for_status()
+                data = resp.json()
+                # OpenRouter / Anthropic compatible parsing
+                if "choices" in data:
+                    return data["choices"][0]["message"]["content"].strip()
+                if "content" in data:
+                    return data["content"][0].get("text", "").strip()
+                return "[LLM error] Unrecognized response"
+
+            except (httpx.ConnectError, httpx.ReadTimeout) as e:
+                last_error = e
+                logger.warning(f"Transient error on attempt {attempt+1}: {e}")
+                await asyncio.sleep(2 ** attempt)
+                continue
+
+            except httpx.HTTPStatusError as e:
+                last_error = e
+                logger.warning(f"HTTP {e.response.status_code} on attempt {attempt+1}: {e}")
+                if e.response.status_code >= 500:
+                    await asyncio.sleep(2 ** attempt)
+                    continue
+                break
+
+            except Exception as e:
+                last_error = e
+                logger.error(f"Unexpected LLM error on attempt {attempt+1}: {e}")
+                break
+
+        error_msg = str(last_error)[:200] if last_error else "Unknown error"
+        logger.error(f"LLM call failed after {retries} attempts: {error_msg}")
+        return f"[LLM error] {error_msg}"
+
+    async def chat_structured(self, prompt: str, **kwargs) -> Dict[str, Any]:
         return {
-            "raw":      text,
-            "model":    self.model,
-            "provider": self._PROVIDER_DISPLAY,
+            "raw": await self.chat(prompt, **kwargs),
+            "model": self.model,
+            "provider": "Anthropic Claude",
         }
