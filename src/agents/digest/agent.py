@@ -592,7 +592,7 @@ Team collaboration remains strong. Engineers are engaged and momentum is positiv
             if "blocker" in line.lower() and not line.strip().startswith("#")
         ]
         has_real_blockers = any(
-            "none" not in line.lower()
+            not any(neg in line.lower() for neg in ("none", "no ", "not ", "n/a"))
             for line in blocker_content_lines
         )
         if has_real_blockers:
