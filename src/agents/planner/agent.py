@@ -1,5 +1,4 @@
 """
-
 Planner Agent — strategic planning component of the multi-agent DevOps system.
 
 The Planner analyses GitHub issues or user goals and produces a structured
@@ -320,7 +319,9 @@ class PlannerAgent(MCPAgent):
         recommended_focus = critical_path[0] if critical_path else "Define requirements"
 
         confidence_label = self._get_confidence_label(estimate.confidence_level)
-        days = max(1, int(estimate.base_estimate_hours / 8) + 1)
+
+        # FIXED MATH: consistent rounding
+        days = round(estimate.base_estimate_hours / 8, 1)
         estimated_duration = f"{days} day(s) ({estimate.base_estimate_hours:.1f} h)"
 
         if complexity == "high" and confidence_label == "low":
@@ -574,7 +575,8 @@ CLASSIFICATION:
 TASK TO DECOMPOSE:
 {description}
 
-Generate 4-8 EXECUTABLE subtasks. Each subtask will be:
+Generate 1-8 EXECUTABLE subtasks based STRICTLY on the issue description.
+Each subtask will be:
 - Created as a GitHub issue or checklist item
 - Assigned directly to engineers
 - Used for sprint planning and time estimation
@@ -584,6 +586,8 @@ Requirements:
 - Technically specific (not generic "implement X")
 - Completable by a single engineer in 1-3 days
 - Testable / verifiable
+
+CRITICAL: If the issue description is generic, a test, or lacks technical detail, output exactly 1 simple subtask (e.g., "Acknowledge test issue") and DO NOT invent architecture, features, or deployment plans.
 
 Return ONLY a JSON array of strings:
 ["Specific technical subtask 1", "Specific technical subtask 2", ...]
