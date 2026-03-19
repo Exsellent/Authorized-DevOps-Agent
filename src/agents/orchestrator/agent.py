@@ -803,14 +803,24 @@ class OrchestratorAgent(MCPAgent):
 
     @staticmethod
     def _calculate_priority(classification: Dict, risk_level: str) -> str:
+        priority_hint = classification.get("priority_hint", "")
+        task_type = classification.get("task_type", "other")
         complexity = classification.get("complexity", "medium")
+
+        #1. FORCED LOW PRIORITY (Override)
+
+        if priority_hint == "P3" or task_type == "other":
+            return "P3"
+
+        # 2. CRITICAL LEVEL
         if risk_level == "CRITICAL":
             return "P0"
+
+        # 3. HIGH PRIORITY
         if risk_level == "HIGH" or complexity == "high":
             return "P1"
-        if risk_level == "MEDIUM" or complexity == "medium":
-            return "P2"
-        return "P3"
+
+        return "P2"
 
     @staticmethod
     def _generate_labels(
