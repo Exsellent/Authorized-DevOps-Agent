@@ -631,26 +631,28 @@ class CodeExecutionAgent(MCPAgent):
 
 RULES (strictly follow):
 
-1. Write exactly 3-5 test functions named test_*
-2. Use only statements (without unittest)
-3. Each test is offline, register the tested user in each test.
-4. Compliance tests (successful_auth, registration):
-how to do it: print ('PASSED: test_name')
-5. Error tests (blocking, invalid IDs):
-- Be sure to try/except for a creative idea!
-- V except: print('SUBMITTED: test_name')
-   - V else: assert False, "An exception was expected, but none of them were raised"
-- DO NOT assume THAT nothing HAS PASSED except!
-6. No time.sleep(), no servers, no external import
-7. To lock/limit the speed according to the current time, do not sleep mode
-8. Output ONLY the test code to the `python block
-9. CRITICAL FOR CONFIGURATION: When simulating multiple failed attempts to trigger a lock or testing behavior after failures, you SHOULD catch exceptions during setup! Example:
-   for _ in the range(5):
-try:
-           auth.verify_password('u', 'wrong', h)
-except for the exception:
-           pass through
+
+1. SELF-CONTAINED: Include full implementation (classes/functions) AND tests in ONE output. If calling 'auth.login', you MUST define 'class Auth' above.
+2. NO EXTERNAL IMPORTS: Use only standard libraries (hashlib, hmac, json). No 'import auth' or 'import utils'.
+3. REAL LOGIC: Do not use stubs or "# implementation here". Write actual functional code for all methods used.
+4. TEST COUNT: Exactly 3-5 functions named 'test_*'.
+5. ISOLATION: Setup data (e.g. auth.register) INSIDE each test. 
+   CRITICAL: Do not re-register the user inside a loop during lockout testing, as it resets the failure counter.
+6. COMPLIANCE (Success): print('PASSED: test_name') for successful registration/login.
+7. ERROR/LOCKOUT (Failure): 
+   - Use try/except to catch expected exceptions.
+   - On catch: print('SUBMITTED: test_name').
+   - In 'else' block (no exception): assert False, "Expected exception but none was raised".
+8. SETUP GUARDRAIL: In lockout loops (multiple failures), ALWAYS use try/except to swallow exceptions so the script reaches the final check.
+9. NO TIME: No time.sleep(), no networks, no servers. Use a 'mock_time' variable or counter for time-based logic.
+10. SINGLE BLOCK: Output everything in one `python` code block.
+11. CRITICAL: The code included in the patch_files MUST be character-for-character identical to the code that passed the verification tests. Do not refactor or change variable names after testing.
+
+
     """
+
+
+
         try:
             code_resp = await self.llm.chat(gen_prompt)
             if self._is_code_response_invalid(code_resp):
