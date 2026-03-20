@@ -471,8 +471,14 @@ class OrchestratorAgent(MCPAgent):
         self._step(reasoning, "Reading repository structure via GitHub API",
                    input_data={"repo": repo})
         try:
-            repo_info = await self.github.get_repo_info(github_token, repo)
-            file_tree = await self.github.list_files(github_token, repo)
+            repo_info = await self._github_call_with_retry(
+                lambda t: self.github.get_repo_info(t, repo),
+                subject_token, use_refresh, reasoning,
+            )
+            file_tree = await self._github_call_with_retry(
+                lambda t: self.github.list_files(t, repo),
+                subject_token, use_refresh, reasoning,
+            )
             base_branch = repo_info.get("default_branch", base_branch)
             self._step(
                 reasoning,
@@ -619,28 +625,37 @@ class OrchestratorAgent(MCPAgent):
                 input_data={"branch": branch_name, "base": base_branch},
             )
             try:
-                await self.github.create_branch(
-                    github_token, repo, branch_name, base_branch
+                await self._github_call_with_retry(
+                    lambda t: self.github.create_branch(t, repo, branch_name, base_branch),
+                    subject_token, use_refresh, reasoning,
                 )
                 for pf in patch_files:
-                    await self.github.commit_file(
-                        token=github_token,
-                        repo=repo,
-                        branch=branch_name,
-                        file_path=pf["path"],
-                        content_base64=pf["content_base64"],
-                        message=pf.get("commit_message", f"fix: {goal}"),
-                        existing_sha=pf.get("sha"),
+                    # capture pf in closure explicitly to avoid late-binding bug
+                    _pf = pf
+                    await self._github_call_with_retry(
+                        lambda t: self.github.commit_file(
+                            token=t,
+                            repo=repo,
+                            branch=branch_name,
+                            file_path=_pf["path"],
+                            content_base64=_pf["content_base64"],
+                            message=_pf.get("commit_message", f"fix: {goal}"),
+                            existing_sha=_pf.get("sha"),
+                        ),
+                        subject_token, use_refresh, reasoning,
                     )
 
                 pr_body = self._build_pr_body(goal, issues_found, overall_risk, code_diff)
-                pr = await self.github.create_pull_request(
-                    token=github_token,
-                    repo=repo,
-                    head_branch=branch_name,
-                    base_branch=base_branch,
-                    title=f"🤖 [AI Security Fix] {goal[:72]}",
-                    body=pr_body,
+                pr = await self._github_call_with_retry(
+                    lambda t: self.github.create_pull_request(
+                        token=t,
+                        repo=repo,
+                        head_branch=branch_name,
+                        base_branch=base_branch,
+                        title=f"🤖 [AI Security Fix] {goal[:72]}",
+                        body=pr_body,
+                    ),
+                    subject_token, use_refresh, reasoning,
                 )
                 pr_url = pr.get("html_url", "")
                 pr_number = pr.get("number")
