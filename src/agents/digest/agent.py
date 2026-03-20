@@ -13,6 +13,7 @@ Consumed by:
 
 """
 
+import json
 import logging
 from dataclasses import dataclass, asdict
 from datetime import date as date_module, datetime
@@ -519,83 +520,110 @@ Overall risk level assessed as **{risk_level}**.
 
         context_section = f"\nPROJECT DATA:\n{safe_context}\n" if safe_context else ""
 
-        prompt = f"""You are an autonomous daily reporting agent in a GitHub DevOps workflow.
+        # === MODIFIED: JSON prompt ===
+        prompt = f"""You are a DevOps digest agent.
 
-Generating daily digest for: {repo_display} — {date}
+Generate a daily digest for {repo_display} on {date}.
 
-Your digest will be:
-- Sent to the team's Slack #daily-updates channel
-- Posted as a GitHub repository summary comment
-- Included in the weekly progress report
 {context_section}
-Structure (Markdown):
 
-## 📊 Progress
-Key achievements today (2-3 bullet points).
-Reference GitHub issue/PR numbers where relevant (#123).
+Return STRICT JSON only:
+{{
+  "progress": "string",
+  "risks": "string",
+  "team_health": "string",
+  "next_steps": "string"
+}}
 
-## ⚠️ Blockers
-Current impediments (list "None" if clear).
-Each blocker should have a proposed owner or next action.
-
-## 👥 Team Health
-1 paragraph on collaboration, momentum, and any concerns.
-
-Requirements:
-- Under 300 words
-- Professional tone
-- Markdown formatting
-- Specific — no generic filler phrases
+NO markdown. NO code blocks. NO extra text.
 """
 
-        digest       = ""
+        raw = ""
         llm_fallback = False
+        data = {}
 
         try:
-            digest = await self.llm.chat(prompt)
-            if is_invalid_response(digest):
+            raw = await self.llm.chat(prompt)
+            if is_invalid_response(raw):
                 llm_fallback = True
         except Exception as exc:
             logger.error("LLM daily digest failed: %s", exc)
             llm_fallback = True
 
-        if llm_fallback or not digest:
-            digest = f"""## 📊 Progress — {date}
+        if not llm_fallback and raw:
+            try:
+                data = json.loads(raw)
+                # Ensure all keys exist
+                data = {
+                    "progress": data.get("progress", ""),
+                    "risks": data.get("risks", ""),
+                    "team_health": data.get("team_health", ""),
+                    "next_steps": data.get("next_steps", "")
+                }
+            except Exception:
+                llm_fallback = True
+                data = {}
 
-- ✅ Development tasks are progressing as planned
-- ✅ Code reviews and PR activity on track
-- ✅ No critical blockers impacting sprint goals
+        if llm_fallback or not data:
+            data = {
+                "progress": "No data available.",
+                "risks": "No risks identified.",
+                "team_health": "Unknown.",
+                "next_steps": "Review pipeline."
+            }
 
-## ⚠️ Blockers
+        # Build final summary Markdown from JSON fields
+        summary = f"""## 📅 Daily Digest - {date}
 
-None currently identified.
+### 📊 Progress
+{data["progress"]}
 
-## 👥 Team Health
+### ⚠️ Blockers
+{data["risks"]}
 
-Team collaboration remains strong. Engineers are engaged and momentum is positive.
+### 👥 Team Health
+{data["team_health"]}
+
+### ▶️ Next Steps
+{data["next_steps"]}
 """
+
+        # Update sections structure to match new fields
+        sections = {
+            "progress": data["progress"],
+            "risk_summary": data["risks"],
+            "team_health": data["team_health"],
+            "next_steps": data["next_steps"],
+            "full_text": summary,
+        }
+
+        # Override validation for daily digest: has_pr_section → has progress data, has_risk_section → has risks data
+        word_count = len(summary.split())
+        has_progress_data = bool(data["progress"] and data["progress"] != "No data available.")
+        has_risks_data = bool(data["risks"] and data["risks"] != "No risks identified.")
+
+        # Reuse same quality thresholds but with adapted semantics
+        # We'll treat progress section as "pr_section" and risks as "risk_section" for compatibility
+        validation = DigestValidation(
+            word_count=word_count,
+            under_limit=word_count < 200,
+            has_pr_section=has_progress_data,
+            has_risk_section=has_risks_data,
+            has_summary=bool(summary),
+            tone_positive=False,   # not calculated for daily
+            confidence=0.95 if (has_progress_data or has_risks_data) else 0.7,
+            quality_state=DigestStatus.HEALTHY.value if (has_progress_data and has_risks_data) else DigestStatus.WARNING.value,
+        )
 
         self._step(
             reasoning,
             "LLM daily digest generated",
-            output_data={"word_count": len(digest.split()), "fallback": llm_fallback},
+            output_data={"word_count": word_count, "fallback": llm_fallback},
         )
 
-        validation = self._validate_digest_quality(digest)
-        sections   = self._extract_sections(digest)
-
-        # Check content lines only — skip Markdown headings to avoid false positives
-        # (the fallback template includes "## ⚠️ Blockers" heading with "None identified")
+        # Auto‑actions
         auto_actions = ["send_to_slack", "post_to_github_comment"]
-        blocker_content_lines = [
-            line for line in digest.splitlines()
-            if "blocker" in line.lower() and not line.strip().startswith("#")
-        ]
-        has_real_blockers = any(
-            not any(neg in line.lower() for neg in ("none", "no ", "not ", "n/a"))
-            for line in blocker_content_lines
-        )
-        if has_real_blockers:
+        if has_risks_data and "risk" in data["risks"].lower():
             auto_actions.append("notify_pm")
 
         self._step(
@@ -612,7 +640,7 @@ Team collaboration remains strong. Engineers are engaged and momentum is positiv
         return {
             "date":        date,
             "repo":        repo_display,
-            "summary":     digest,
+            "summary":     summary,
             "sections":    sections,
             "validation":  asdict(validation),
             "quality_state": validation.quality_state,
