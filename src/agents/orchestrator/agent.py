@@ -298,10 +298,23 @@ class OrchestratorAgent(MCPAgent):
 
     # ── MCP agent call ────────────────────────────────────────────────────────
 
-    async def _call_agent(self, url: str, tool: str, params: Dict) -> Dict:
+    async def _call_agent(
+        self,
+        url: str,
+        tool: str,
+        params: Dict,
+        *,
+        _retry_on_vault_error: bool = False,
+    ) -> Dict:
         """
         Invoke a downstream agent via MCP HTTP.
         Sensitive params are redacted in logs but passed in full to the agent.
+
+        Auth0 recommendation #3: if the agent returns a 401/token_expired signal,
+        the caller should re-initiate a Token Vault exchange rather than failing
+        the entire pipeline.  Sub-agents never hold tokens, so 401s in this
+        path come from config issues, not expired tokens — those are handled
+        in _github_call_with_retry for GitHub API calls.
         """
         logger.debug("→ %s/%s params=%s", url, tool, _safe_deep(params))
         try:
@@ -321,6 +334,42 @@ class OrchestratorAgent(MCPAgent):
             logger.warning("Downstream agent %s/%s returned error: %s",
                            url, tool, result["error"][:200])
         return result
+
+    async def _github_call_with_retry(
+        self,
+        coro_factory,
+        subject_token: str,
+        use_refresh: bool,
+        reasoning: List[ReasoningStep],
+    ):
+        """
+        Execute a GitHub API coroutine.  On httpx 401, initiate a fresh
+        RFC 8693 Token Vault exchange and retry once — implements Auth0
+        recommendation #3 (token_expired → re-exchange rather than pipeline fail).
+        """
+        try:
+            return await coro_factory(self._current_github_token)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code != 401:
+                raise
+            logger.warning("GitHub 401 received — initiating fresh Token Vault exchange")
+            self._step(
+                reasoning,
+                "GitHub 401: re-initiating Token Vault RFC 8693 exchange",
+                output_data={"retry": True},
+            )
+            fresh_token = await self.vault.get_github_token(
+                subject_token=subject_token,
+                scopes=["repo"],
+                use_refresh_token=use_refresh,
+            )
+            self._current_github_token = fresh_token
+            self._step(
+                reasoning,
+                "Token Vault: fresh token obtained after 401",
+                output_data={"token_type": fresh_token.token_type, "retry_succeeded": True},
+            )
+            return await coro_factory(fresh_token)
 
     # ─────────────────────────────────────────────────────────────────────────
     # MAIN PIPELINE — run_secure_devops_flow
@@ -361,6 +410,7 @@ class OrchestratorAgent(MCPAgent):
         """
         reasoning: List[ReasoningStep] = []
         github_token: Optional[VaultToken] = None
+        self._current_github_token: Optional[VaultToken] = None  # for retry helper
 
         # Track which agents failed so we can report partial success
         agent_errors: List[str] = []
@@ -407,6 +457,7 @@ class OrchestratorAgent(MCPAgent):
                     # access_token is NOT included — _safe_deep would redact anyway
                 },
             )
+            self._current_github_token = github_token  # available for retry helper
         except TokenVaultError as exc:
             logger.error("Token Vault failed: %s", exc)
             self._step(
@@ -468,15 +519,22 @@ class OrchestratorAgent(MCPAgent):
         )
 
         # ── Step 4: Risks — security & impact assessment ──────────────────────
+        subtasks_summary = "; ".join(planner_result.get("subtasks", [])[:4])
         self._step(reasoning, "Risks: performing security and impact assessment",
                    input_data={"goal": goal, "task_type": classification.get("task_type")})
         risks_result = await self._call_agent(
             self.risks_url, "analyze_risks",
             {
-                "feature": f"{goal} in {repo}",
+                # Pass goal alone (not "goal in repo") — cleaner LLM signal
+                "feature": goal,
+                "issue_ref": f"{repo}: {goal}",
+                "title": goal,
+                # classification from Planner — gives Risks task_type + complexity
                 "classification": classification,
                 "repo": repo,
                 "file_tree": [f["name"] for f in file_tree[:30]],
+                # Planner subtasks as context — LLM can identify domain-specific risks
+                "context": subtasks_summary or f"Goal: {goal}. Repository: {repo}.",
             },
         )
         _check_agent_result(risks_result, "Risks")
@@ -777,7 +835,14 @@ class OrchestratorAgent(MCPAgent):
 
         risks_result = await self._call_agent(
             self.risks_url, "analyze_risks",
-            {"feature": f"{title}. {body[:300]}"},
+            {
+                "feature": f"{title}. {body[:300]}".strip(". ") or title,
+                "title": title,
+                "issue_ref": f"#{issue_number}: {title}" if issue_number else title,
+                "classification": classification,
+                "repo": issue.get("repository_url", ""),
+                "context": f"GitHub issue triage. Task type: {classification.get('task_type', 'unknown')}. Priority hint: {classification.get('priority_hint', 'P2')}.",
+            },
         )
         overall_risk = risks_result.get("executive_summary", {}).get(
             "overall_risk_level", "MEDIUM"
@@ -807,8 +872,7 @@ class OrchestratorAgent(MCPAgent):
         task_type = classification.get("task_type", "other")
         complexity = classification.get("complexity", "medium")
 
-        #1. FORCED LOW PRIORITY (Override)
-
+        # 1. FORCED LOW PRIORITY (Override)
         if priority_hint == "P3" or task_type == "other":
             return "P3"
 
