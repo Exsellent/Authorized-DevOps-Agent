@@ -407,7 +407,7 @@ class RisksAgent(MCPAgent):
         return [
             {
                 "title": r.title,
-                "severity": r.severity.upper(),   # ← UPPERCASE for orchestrator
+                "severity": r.severity.upper(),  # ← UPPERCASE for orchestrator
                 "category": r.category,
                 "mitigation_strategy": r.mitigation_strategy,
                 "priority": r.priority,
@@ -419,6 +419,7 @@ class RisksAgent(MCPAgent):
     # MCP Tool: analyze_risks
     # ─────────────────────────────────────────────────────────────────────────
 
+    @metric_counter("risks")
     @metric_counter("risks")
     @log_method
     async def analyze_risks(
@@ -477,58 +478,81 @@ class RisksAgent(MCPAgent):
             },
         )
 
-        # ── Step 2: LLM prompt ────────────────────────────────────────────────
+        # === Guardrail against dummy/test issues ===
+        is_dummy = (
+                len(safe_feature) < 15 or
+                "test" in safe_feature.lower() or
+                (issue_number is not None and "test" in str(issue_number).lower())
+        )
+
+        if is_dummy:
+            logger.info("Dummy/test issue detected — skipping LLM, using baseline risks")
+            detected_risks = self._get_baseline_risks(safe_feature, issue_number)
+            analysis_mode = RiskAnalysisMode.BASELINE
+            self._step(
+                reasoning,
+                "Dummy issue guardrail triggered — using baseline risks",
+                output_data={"risks_detected": len(detected_risks)},
+            )
+
+        # === We get the baseline risks in advance (we use it anyway) ===
+        baseline_risks = self._get_baseline_risks(safe_feature, issue_number)
+
+        # ── Step 2: LLM prompt (with guardrail instruction) ───────────────────
         prompt = f"""You are a proactive risk assessment agent in a GitHub DevOps pipeline.
 
-TASK REFERENCE: {issue_ref}
-{repo_line}
-{tree_line}
+    TASK REFERENCE: {issue_ref}
+    {repo_line}
+    {tree_line}
 
-PLANNER CLASSIFICATION:
-- Task type: {task_type}
-- Complexity: {complexity}
+    PLANNER CLASSIFICATION:
+    - Task type: {task_type}
+    - Complexity: {complexity}
 
-FEATURE / GOAL TO ASSESS:
-{safe_feature}
+    FEATURE / GOAL TO ASSESS:
+    {safe_feature}
 
-PROJECT CONTEXT: {safe_context or "GitHub repository — security and DevOps automation"}
+    PROJECT CONTEXT: {safe_context or "GitHub repository — security and DevOps automation"}
 
-Identify 3–6 PLANNING-PHASE risks before any code is written.
-Focus on: design decisions, security gaps, integration fragility, scalability,
-compliance, and CI/CD pipeline risks.
+    CRITICAL RULE: If the issue description contains "test", is generic (e.g. "something is broken"), 
+    or lacks architectural details, DO NOT invent risks. Return an empty issues array and overall_risk_level "LOW".
 
-Do NOT analyse existing CVEs or scan results — those are handled separately.
+    Identify 3–6 PLANNING-PHASE risks before any code is written.
+    Focus on: design decisions, security gaps, integration fragility, scalability,
+    compliance, and CI/CD pipeline risks.
 
-For each risk return:
-- risk_id: short unique ID (e.g. "SEC-001")
-- title: concise title (max 80 chars)
-- category: security|design_risk|business_impact|integration_risk|scalability|technical_debt|compliance|operational
-- severity: critical|high|medium|low
-- likelihood: high|medium|low
-- description: clear explanation (1-2 sentences)
-- potential_impact: business consequence if risk materialises
-- mitigation_strategy: 1-2 concrete actionable steps
-- priority: integer 1–5 (1 = most urgent)
-- timeline: when risk might materialise
+    Do NOT analyse existing CVEs or scan results — those are handled separately.
 
-Return ONLY valid JSON (no markdown, no extra text):
-{{
-  "risks": [
+    For each risk return:
+    - risk_id: short unique ID (e.g. "SEC-001")
+    - title: concise title (max 80 chars)
+    - category: security|design_risk|business_impact|integration_risk|scalability|technical_debt|compliance|operational
+    - severity: critical|high|medium|low
+    - likelihood: high|medium|low
+    - description: clear explanation (1-2 sentences)
+    - potential_impact: business consequence if risk materialises
+    - mitigation_strategy: 1-2 concrete actionable steps
+    - priority: integer 1–5 (1 = most urgent)
+    - timeline: when risk might materialise
+
+    Return ONLY valid JSON (no markdown, no extra text):
     {{
-      "risk_id": "SEC-001",
-      "title": "...",
-      "category": "security",
-      "severity": "high",
-      "likelihood": "medium",
-      "description": "...",
-      "potential_impact": "...",
-      "mitigation_strategy": "...",
-      "priority": 1,
-      "timeline": "Before development starts"
+      "risks": [
+        {{
+          "risk_id": "SEC-001",
+          "title": "...",
+          "category": "security",
+          "severity": "high",
+          "likelihood": "medium",
+          "description": "...",
+          "potential_impact": "...",
+          "mitigation_strategy": "...",
+          "priority": 1,
+          "timeline": "Before development starts"
+        }}
+      ]
     }}
-  ]
-}}
-"""
+    """
 
         self._step(
             reasoning,
@@ -544,7 +568,7 @@ Return ONLY valid JSON (no markdown, no extra text):
 
             if is_invalid_response(llm_text):
                 analysis_mode = RiskAnalysisMode.BASELINE
-                detected_risks = self._get_baseline_risks(safe_feature, issue_number)
+                detected_risks = baseline_risks
                 self._step(
                     reasoning,
                     "LLM unavailable — using baseline risk model",
@@ -553,38 +577,52 @@ Return ONLY valid JSON (no markdown, no extra text):
             else:
                 parsed = self._parse_llm_risks(llm_text, safe_feature)
 
+                # === NEW LOGIC: baseline as a foundation + LLM as an enhancer ===
+                detected_risks = baseline_risks
+                analysis_mode = RiskAnalysisMode.BASELINE
+
                 if parsed:
-                    detected_risks = parsed
-                    analysis_mode = RiskAnalysisMode.LLM
-                    self._step(
-                        reasoning,
-                        "LLM risk analysis parsed successfully",
-                        output_data={
-                            "risks_detected": len(detected_risks),
-                            "analysis_mode": analysis_mode.value,
-                        },
-                    )
-                else:
-                    detected_risks = self._get_baseline_risks(safe_feature, issue_number)
+                    # We go through each risk from LLM
+                    for r in parsed:
+                        # We check whether the risk is related to keywords from the task description
+                        # We break the description into words and check if there is a risk in the title
+                        keywords = safe_feature.lower().split()
+                        if any(k in r.title.lower() for k in keywords):
+                            # Lowering severity to medium (LLM cannot give higher)
+                            if r.severity in ("critical", "high"):
+                                r.severity = "medium"
+                            detected_risks.append(r)
                     analysis_mode = RiskAnalysisMode.HYBRID
                     self._step(
                         reasoning,
-                        "LLM response not parseable — using baseline (hybrid mode)",
+                        "LLM risks merged with baseline (hybrid mode)",
                         output_data={
-                            "risks_detected": len(detected_risks),
-                            "analysis_mode": analysis_mode.value,
+                            "llm_risks_added": len(parsed),
+                            "total_risks": len(detected_risks),
                         },
+                    )
+                else:
+                    self._step(
+                        reasoning,
+                        "LLM response not parseable — using only baseline",
+                        output_data={"risks_detected": len(detected_risks)},
                     )
 
         except Exception as exc:
             logger.error("Risk analysis failed: %s", exc)
             analysis_mode = RiskAnalysisMode.BASELINE
-            detected_risks = self._get_baseline_risks(safe_feature, issue_number)
+            detected_risks = baseline_risks
             self._step(
                 reasoning,
                 f"LLM call failed — using baseline: {exc}",
                 output_data={"analysis_mode": analysis_mode.value},
             )
+
+        # === LLM cannot assign CRITICAL severity — we downgrade it to HIGH ===
+        for risk in detected_risks:
+            if risk.severity == RiskSeverity.CRITICAL.value:
+                risk.severity = RiskSeverity.HIGH.value
+                logger.debug("Downgraded risk %s from CRITICAL to HIGH", risk.risk_id)
 
         # ── Step 4: Scoring and actions ───────────────────────────────────────
         overall_risk = self._calculate_overall_risk(detected_risks)
@@ -595,18 +633,30 @@ Return ONLY valid JSON (no markdown, no extra text):
         if complexity == "high" and overall_risk == "MEDIUM":
             overall_risk = "HIGH"
 
-        if overall_risk == "CRITICAL":
-            auto_actions = ["block_pr", "require_architecture_review", "notify_leadership"]
-            priority = "P0"
-        elif overall_risk == "HIGH":
-            auto_actions = ["require_senior_review", "require_security_review", "notify_pm"]
-            priority = "P1"
-        elif overall_risk == "MEDIUM":
-            auto_actions = ["add_extra_testing", "request_design_review"]
+        # === Guardrail: a very short task description (less than 20 characters) ===
+        if len(safe_feature) < 20:
+            logger.info("Very short feature description (<20 chars) — forcing MEDIUM risk level")
+            overall_risk = "MEDIUM"
             priority = "P2"
         else:
+            # Defining priority based on overall_risk
+            if overall_risk == "CRITICAL":
+                priority = "P0"
+            elif overall_risk == "HIGH":
+                priority = "P1"
+            elif overall_risk == "MEDIUM":
+                priority = "P2"
+            else:
+                priority = "P3"
+
+        if overall_risk == "CRITICAL":
+            auto_actions = ["block_pr", "require_architecture_review", "notify_leadership"]
+        elif overall_risk == "HIGH":
+            auto_actions = ["require_senior_review", "require_security_review", "notify_pm"]
+        elif overall_risk == "MEDIUM":
+            auto_actions = ["add_extra_testing", "request_design_review"]
+        else:
             auto_actions = ["standard_development"]
-            priority = "P3"
 
         self._step(
             reasoning,
@@ -836,7 +886,7 @@ Return ONLY valid JSON (no markdown, no extra text):
             try:
                 content = base64.b64decode(encoded).decode("utf-8", errors="replace")
             except Exception:
-                content = ""   # treat as empty if decoding fails
+                content = ""  # treat as empty if decoding fails
 
             path = pf.get("path", "unknown")
             for pattern, category, severity in FORBIDDEN:
