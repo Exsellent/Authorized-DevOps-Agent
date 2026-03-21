@@ -877,64 +877,83 @@ const PIPELINE_STEPS = [
     id: 'codeexec',
     icon: '⚙️',
     name: 'Code-Execution',
-    sub_running: 'Generating fix · Running tests · Self-healing debug loop…',
-    sub_done: 'EXECUTION iter 1: 5/5 tests passed — production_ready=true',
+    sub_running: 'Generating fix · Running isolated tests · Self-healing debug loop…',
+    sub_done: 'EXECUTION iter 1: 5/5 tests passed — quality_score=1.00 — production_ready=true',
     cls: 'code-step',
     dur: 7000,
     prog_cls: 'prog-code',
     logs: [
-      { c: 'code-line', t: 'Code-Execution Agent online — sandbox environment ready' },
-      { c: 'code-line', t: 'STRATEGIC: Planning JWT secret fix approach' },
-      { c: '', t: '  Strategy: move SECRET_KEY to os.environ["JWT_SECRET_KEY"]' },
-      { c: '', t: '  Add startup validation: raise ValueError if env var missing' },
-      { c: '', t: '  Upgrade PyJWT: 1.7.1 → 2.8.0 with algorithm allowlist' },
-      { c: '', t: '  Add exp claim validation in validate_auth_token()' },
-      { c: 'code-line', t: 'GENERATION: Generating patch code — target: 42 lines' },
-      { c: '', t: '  File: src/config.py — removing hardcoded secret' },
-      { c: '', t: '  File: src/auth/validate.py — adding exp claim check' },
-      { c: '', t: '  File: requirements.txt — upgrading PyJWT to 2.8.0' },
-      { c: 'ok', t: 'GENERATION complete — code_hash: a7f3c9d2, 42 lines generated' },
-      { c: 'code-line', t: 'EXECUTION iter 0: running test suite (5 tests)…' },
-      { c: '', t: '  test_jwt_encode ... PASS' },
-      { c: '', t: '  test_jwt_decode ... PASS' },
-      { c: '', t: '  test_expiry_validation ... PASS' },
-      { c: '', t: '  test_algorithm_allowlist ... PASS' },
-      { c: 'warn', t: '  test_refresh_edge_case ... FAIL — TypeError: NoneType not iterable' },
-      { c: 'warn', t: 'iter 0: 4/5 tests passed — quality_score: 0.74' },
-      { c: 'code-line', t: 'REFLECTION: Analyzing failure in test_refresh_edge_case' },
-      { c: '', t: '  Root cause: validate_auth_token() returns None when header missing' },
-      { c: '', t: '  Fix: add guard clause — return {"valid": false, "reason": "missing_header"}' },
-      { c: 'code-line', t: 'GENERATION: Applying fix — new_hash: b8e1f4a9' },
-      { c: 'code-line', t: 'EXECUTION iter 1: re-running test suite…' },
-      { c: 'ok', t: '  test_jwt_encode ... PASS' },
-      { c: 'ok', t: '  test_jwt_decode ... PASS' },
-      { c: 'ok', t: '  test_expiry_validation ... PASS' },
-      { c: 'ok', t: '  test_algorithm_allowlist ... PASS' },
-      { c: 'ok', t: '  test_refresh_edge_case ... PASS' },
-      { c: 'ok', t: 'EXECUTION iter 1: 5/5 tests passed — quality_score: 0.87 — production_ready=true' },
+      { c: 'code-line', t: 'Code-Execution Agent online — isolated subprocess sandbox ready' },
+      { c: 'code-line', t: 'STRATEGIC: Analysing goal — planning fix approach' },
+      { c: '', t: '  Strategy: move SECRET_KEY → os.environ["JWT_SECRET_KEY"]' },
+      { c: '', t: '  Add startup guard: raise ValueError if env var missing' },
+      { c: '', t: '  Upgrade PyJWT: 1.7.1 → 2.8.0, add algorithms=["HS256"] allowlist' },
+      { c: '', t: '  Add exp claim check in validate_auth_token()' },
+      { c: 'code-line', t: 'GENERATION: Generating fix code (LLM) — target: src/security/auth_fix.py' },
+      { c: '', t: '  Patch: src/config.py — hardcoded secret removed' },
+      { c: '', t: '  Patch: src/auth/validate.py — exp claim validation added' },
+      { c: '', t: '  Patch: requirements.txt — PyJWT pinned to 2.8.0' },
+      { c: 'ok', t: '  code_hash: a7f3c9d2 — 148 lines generated — deps: hashlib, hmac, os' },
+      { c: 'code-line', t: 'GENERATION: Writing test suite (LLM) — 5 isolated test_* functions' },
+      { c: '', t: '  test_register_success, test_login_success, test_login_failure,' },
+      { c: '', t: '  test_lockout_after_3_attempts, test_session_expiration' },
+      { c: '', t: '  _install_deps: auto-installing [PyJWT==2.8.0] via pip' },
+      { c: 'ok', t: '  deps installed — test harness ready — preamble preserved per test' },
+      { c: 'code-line', t: 'EXECUTION iter 0: running 5 isolated tests in subprocess sandbox…' },
+      { c: '', t: '  [test_1] test_register_success .................. 31ms' },
+      { c: 'ok', t: '  [test_1] PASSED: test_register_success' },
+      { c: '', t: '  [test_2] test_login_success ..................... 29ms' },
+      { c: 'ok', t: '  [test_2] PASSED: test_login_success' },
+      { c: '', t: '  [test_3] test_login_failure ..................... 27ms' },
+      { c: 'ok', t: '  [test_3] PASSED: test_login_failure' },
+      { c: '', t: '  [test_4] test_lockout_after_3_attempts .......... 28ms' },
+      { c: 'warn', t: '  [test_4] FAIL — AssertionError: Expected lockout on attempt 3' },
+      { c: '', t: '  [test_5] test_session_expiration ................ 26ms' },
+      { c: 'ok', t: '  [test_5] PASSED: test_session_expiration' },
+      { c: 'warn', t: 'iter 0: 4/5 passed — quality_score: 0.74 — exec_time: 141ms' },
+      { c: 'code-line', t: 'REFLECTION: Root cause analysis — test_lockout_after_3_attempts' },
+      { c: '', t: '  Failed assertion: lockout not raised on 3rd invalid login attempt' },
+      { c: '', t: '  Root cause: failed_attempts incremented AFTER lockout check (off-by-one)' },
+      { c: '', t: '  Fix: move lockout threshold check to BEFORE incrementing counter' },
+      { c: 'code-line', t: 'GENERATION: Applying self-correction — new_hash: b8e1f4a9' },
+      { c: 'code-line', t: 'EXECUTION iter 1: re-running 5 isolated tests…' },
+      { c: 'ok', t: '  [test_1] PASSED: test_register_success ........ 29ms' },
+      { c: 'ok', t: '  [test_2] PASSED: test_login_success ........... 28ms' },
+      { c: 'ok', t: '  [test_3] PASSED: test_login_failure ........... 27ms' },
+      { c: 'ok', t: '  [test_4] PASSED: test_lockout_after_3_attempts  27ms ✓ fixed' },
+      { c: 'ok', t: '  [test_5] PASSED: test_session_expiration ...... 27ms' },
+      { c: 'ok', t: 'EXECUTION iter 1: 5/5 tests passed — quality_score: 1.00 — exec_time: 138ms' },
+      { c: 'ok', t: 'VERIFICATION: production_ready=true — confidence=1.0 — patch base64-encoded' },
     ]
   },
   {
     id: 'orchestrator_pr',
     icon: '🎭',
     name: 'Orchestrator',
-    sub_running: 'Creating branch, committing patch, opening Pull Request…',
-    sub_done: 'GitHub: PR #42 created — fix/jwt-security-hardening',
+    sub_running: 'Creating branch, committing patch files, opening Pull Request…',
+    sub_done: 'GitHub: PR #42 created — token_vault_used=true — token GC\'d',
     cls: '',
     dur: 3800,
     logs: [
-      { c: '', t: 'Orchestrator receiving production-ready patch from Code-Exec agent' },
-      { c: '', t: 'GitHub API: creating branch fix/jwt-security-hardening from main' },
-      { c: 'ok', t: 'Branch created: fix/jwt-security-hardening (HEAD: a3f1c8d)' },
-      { c: '', t: 'Committing patch file: src/config.py' },
-      { c: '', t: 'Committing patch file: src/auth/validate.py' },
-      { c: '', t: 'Committing patch file: requirements.txt' },
-      { c: 'ok', t: 'Commit a3f1c8d pushed — "fix(security): move JWT secret to env var, add exp validation"' },
-      { c: '', t: 'Composing PR description — including risk analysis, test results, migration guide' },
+      { c: '', t: 'Orchestrator: receiving production-ready patch from Code-Execution agent' },
+      { c: '', t: '  patch_files: 3 files — content_base64-encoded, ready for GitHub API' },
+      { c: '', t: '  code_hash: b8e1f4a9 — quality_score: 1.00 — tests: 5/5 passed' },
+      { c: '', t: 'Risks Phase 2: running post-patch security gate…' },
+      { c: '', t: '  Scanning for forbidden patterns: eval(, exec(, hardcoded secrets…' },
+      { c: 'ok', t: '  Security gate PASSED — 0 critical violations — PR cleared' },
+      { c: '', t: 'GitHub API: creating branch fix/jwt-security-hardening from main (HEAD: a3f1c8d)' },
+      { c: 'ok', t: '  Branch created: fix/jwt-security-hardening' },
+      { c: '', t: 'Committing patch file [1/3]: src/config.py' },
+      { c: '', t: 'Committing patch file [2/3]: src/auth/validate.py' },
+      { c: '', t: 'Committing patch file [3/3]: requirements.txt' },
+      { c: 'ok', t: '  Commit a3f1c8d — "fix(security): move JWT secret to env var, add exp validation"' },
+      { c: '', t: 'Composing PR body — risk analysis, test results, auth0 token proof, migration guide' },
       { c: '', t: 'POST /repos/acme-corp/web-app/pulls' },
       { c: 'ok', t: 'PR #42 created: https://github.com/acme-corp/web-app/pull/42' },
-      { c: '', t: 'Labels applied: security, high-priority, ai-generated' },
-      { c: '', t: 'Reviewers requested: @security-team, @backend-lead' },
+      { c: '', t: '  Labels applied: security, high-priority, ai-generated, token-vault-authorized' },
+      { c: '', t: '  Reviewers requested: @security-team, @backend-lead' },
+      { c: 'ok', t: '  PR body contains: token_vault_used=true — proof of RFC 8693 authorization' },
+      { c: 'ok', t: '  Scoped GitHub token GC\'d — not stored, not logged, not forwarded' },
     ]
   },
   {
@@ -1011,7 +1030,7 @@ const DEMO_ISSUES = [
 
 const DEMO_SUMMARY = `## 📋 Summary
 
-The AI agent addressed a **HIGH severity** JWT secret exposure in \`acme-corp/web-app\`. A pull request was created with a complete security patch. The agent executed **5 tests** — all passed on the second iteration after a self-healing debug loop.
+The AI agent addressed a **HIGH severity** JWT secret exposure in \`acme-corp/web-app\`. A production-ready pull request was created with a complete, tested security patch. The agent autonomously ran **5 isolated tests**, detected a lockout logic bug on iteration 0, self-corrected via REFLECTION, and achieved **5/5 tests passed** with **quality_score=1.00** on iteration 1.
 
 ## 🔐 Security & Risk
 
@@ -1020,10 +1039,19 @@ The AI agent addressed a **HIGH severity** JWT secret exposure in \`acme-corp/we
   - [HIGH] Hardcoded JWT secret in source code (src/config.py)
   - [MEDIUM] Dependency PyJWT 1.7.1 — CVE-2022-29217 (CVSS: 7.5)
   - [LOW] Token expiry not validated on refresh endpoint
+- Phase 2 security gate: **PASSED** — 0 forbidden patterns in generated code
+
+## ⚙️ Code Execution Results
+
+- Tests passed: **5/5** (iter 1 — after 1 self-healing reflection)
+- Quality score: **1.00** — confidence: 1.0 — production_ready: **true**
+- Execution time: 138ms — code_length: 148 lines
+- patch_files: 3 files base64-encoded, ready for GitHub commit
 
 ## 🔗 Pull Request
 
-[PR #42: fix(security): move JWT secret to env var + add exp validation](https://github.com/acme-corp/web-app/pull/42)
+[PR #42: fix(security): move JWT secret to env var + add exp validation](https://github.com/acme-corp/web-app/pull/42)  
+\`token_vault_used: true\` — authorized via Auth0 RFC 8693 Token Exchange
 
 ## ✅ Next Steps
 
@@ -1250,7 +1278,7 @@ async function runDemoPipeline() {
     // After digest: show issues + summary + stats
     if (s.id === 'digest') {
       renderIssues(DEMO_ISSUES);
-      renderSummary(DEMO_SUMMARY, { quality_score: 0.87, production_ready: true });
+      renderSummary(DEMO_SUMMARY, { quality_score: 1.0, production_ready: true });
       animateStat('statRisk', 'HIGH', 'var(--red)');
       animateStat('statIssues', '3', 'var(--orange)');
       animateStat('statTests', '5/5', 'var(--green)');
