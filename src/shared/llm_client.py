@@ -73,11 +73,11 @@ class LLMClient:
             self._client = None
 
     async def chat(
-        self,
-        prompt: str,
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None,
-        max_retries: Optional[int] = None,
+            self,
+            prompt: str,
+            temperature: Optional[float] = None,
+            max_tokens: Optional[int] = None,
+            max_retries: Optional[int] = None,
     ) -> str:
         if not self.enabled:
             return "[LLM error] ANTHROPIC_API_KEY not set"
@@ -99,7 +99,7 @@ class LLMClient:
 
                 if resp.status_code == 429:
                     wait = 2 ** attempt
-                    logger.warning(f"Rate limited (429), retrying in {wait}s (attempt {attempt+1})")
+                    logger.warning(f"Rate limited (429), retrying in {wait}s (attempt {attempt + 1})")
                     await asyncio.sleep(wait)
                     continue
 
@@ -114,13 +114,13 @@ class LLMClient:
 
             except (httpx.ConnectError, httpx.ReadTimeout) as e:
                 last_error = e
-                logger.warning(f"Transient error on attempt {attempt+1}: {e}")
+                logger.warning(f"Transient error on attempt {attempt + 1}: {e}")
                 await asyncio.sleep(2 ** attempt)
                 continue
 
             except httpx.HTTPStatusError as e:
                 last_error = e
-                logger.warning(f"HTTP {e.response.status_code} on attempt {attempt+1}: {e}")
+                logger.warning(f"HTTP {e.response.status_code} on attempt {attempt + 1}: {e}")
                 if e.response.status_code >= 500:
                     await asyncio.sleep(2 ** attempt)
                     continue
@@ -128,7 +128,7 @@ class LLMClient:
 
             except Exception as e:
                 last_error = e
-                logger.error(f"Unexpected LLM error on attempt {attempt+1}: {e}")
+                logger.error(f"Unexpected LLM error on attempt {attempt + 1}: {e}")
                 break
 
         error_msg = str(last_error)[:200] if last_error else "Unknown error"

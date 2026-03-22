@@ -5,14 +5,13 @@ Shared utilities to eliminate code duplication across agents.
 import json
 import logging
 import re
+from datetime import datetime
 from functools import wraps
 from typing import List, Dict, Optional, Any
-from datetime import datetime
 
 from shared.models import ReasoningStep
 
 logger = logging.getLogger("shared.utils")
-
 
 # ---------------------------------------------------------------------------
 # LLM response validation
@@ -76,7 +75,7 @@ def next_step(
         description=description,
         timestamp=datetime.now().isoformat(),
         input_data=input_data or {},
-        output=output_data or {},          # field renamed to 'output' in models.py
+        output=output_data or {},  # field renamed to 'output' in models.py
         agent=agent_name,
     ))
 

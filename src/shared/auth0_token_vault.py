@@ -44,9 +44,9 @@ _FEDERATED_TOKEN_TYPE = (
 
 class GitHubScope(str, Enum):
     """Minimal GitHub OAuth scopes — always request least privilege."""
-    READ_ONLY = "repo"            # read repo content (Planner / Risks agents)
-    WRITE_PR = "repo"             # create branches + PRs  (Code Execution agent)
-    READ_USER = "read:user"       # read user profile
+    READ_ONLY = "repo"  # read repo content (Planner / Risks agents)
+    WRITE_PR = "repo"  # create branches + PRs  (Code Execution agent)
+    READ_USER = "read:user"  # read user profile
 
 
 @dataclass(frozen=True)
@@ -101,11 +101,11 @@ class Auth0TokenVault:
     """
 
     def __init__(
-        self,
-        domain: Optional[str] = None,
-        client_id: Optional[str] = None,
-        client_secret: Optional[str] = None,
-        timeout: float = 10.0,
+            self,
+            domain: Optional[str] = None,
+            client_id: Optional[str] = None,
+            client_secret: Optional[str] = None,
+            timeout: float = 10.0,
     ):
         self.domain = (domain or os.getenv("AUTH0_DOMAIN", "")).rstrip("/")
         self.client_id = client_id or os.getenv("AUTH0_CLIENT_ID", "")
@@ -123,10 +123,10 @@ class Auth0TokenVault:
     # ── Public API ────────────────────────────────────────────────────────────
 
     async def get_github_token(
-        self,
-        subject_token: str,
-        scopes: Optional[list[str]] = None,
-        use_refresh_token: bool = True,
+            self,
+            subject_token: str,
+            scopes: Optional[list[str]] = None,
+            use_refresh_token: bool = True,
     ) -> VaultToken:
         """
         Exchange an Auth0 token for a scoped GitHub access token via Token Vault.
@@ -146,10 +146,10 @@ class Auth0TokenVault:
         )
 
     async def get_slack_token(
-        self,
-        subject_token: str,
-        scopes: Optional[list[str]] = None,
-        use_refresh_token: bool = True,
+            self,
+            subject_token: str,
+            scopes: Optional[list[str]] = None,
+            use_refresh_token: bool = True,
     ) -> VaultToken:
         """Exchange for a Slack access token (optional Slack notification support)."""
         return await self._exchange(
@@ -162,11 +162,11 @@ class Auth0TokenVault:
     # ── Internal ──────────────────────────────────────────────────────────────
 
     async def _exchange(
-        self,
-        connection: str,
-        subject_token: str,
-        scopes: list[str],
-        use_refresh_token: bool,
+            self,
+            connection: str,
+            subject_token: str,
+            scopes: list[str],
+            use_refresh_token: bool,
     ) -> VaultToken:
         """
         Perform the actual RFC 8693 token exchange against Auth0's /oauth/token.
@@ -183,8 +183,8 @@ class Auth0TokenVault:
         payload = {
             "grant_type": _GRANT_TYPE,
             "client_id": self.client_id,
-            "client_secret": self.client_secret,         # kept out of logs below
-            "subject_token": subject_token,               # kept out of logs below
+            "client_secret": self.client_secret,  # kept out of logs below
+            "subject_token": subject_token,  # kept out of logs below
             "subject_token_type": subject_token_type,
             "requested_token_type": _FEDERATED_TOKEN_TYPE,
             "connection": connection,
