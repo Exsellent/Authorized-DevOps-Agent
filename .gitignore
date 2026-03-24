@@ -1,0 +1,60 @@
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+*.sqlite3
+*.db
+
+# Virtual environments
+.venv/
+.venv1/
+
+.venv_wsl/
+venv/
+env/
+
+# Poetry cache and links
+python-wsl
+
+# Environment files
+.env
+
+
+# IDE and editor configs
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# n8n local data
+.n8n/
+
+# Docker artifacts
+docker/*.log
+*.pid
+*.sock
+
+# Test artifacts
+tests/__pycache__/
+*.http
+test_env.py
+
+draft/
+Draft/
+
+# Other temporary files
+*.bak
+*.tmp
+*.temp
+
+
+.ipynb_checkpoints/
+*.ipynb
+
+
+# Local Netlify folder
+.netlify
