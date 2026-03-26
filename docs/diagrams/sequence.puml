@@ -1,0 +1,158 @@
+@startuml
+!theme plain
+skinparam shadowing false
+skinparam backgroundColor white
+
+skinparam participant {
+  BackgroundColor #F0F8FF
+  BorderColor #333333
+  FontSize 12
+  FontStyle bold
+}
+
+skinparam sequenceArrowThickness 2
+skinparam sequenceLifeLineBorderColor #666666
+skinparam sequenceGroupBorderColor #999999
+skinparam sequenceGroupBackgroundColor #F9F9F9
+
+autonumber
+
+title Authorized DevOps Agent — MCP Pipeline\n(OpenClaw → Auth0 Token Vault → 6 Agents → GitHub PR)
+
+participant "OpenClaw\n(local AI)" as OpenClaw #FFD700
+participant "Observatory UI\n(browser)" as UI #2D9CDB
+participant "Orchestrator\n:8600" as Orch #EB5424
+participant "Auth0\nToken Vault" as Vault #EB5424
+participant "Planner\n:8601" as Planner #87CEEB
+participant "Risks\n:8603" as Risks #F08080
+participant "Code Execution\n:8605" as Code #00CED1
+participant "Progress\n:8602" as Progress #90EE90
+participant "Digest\n:8604" as Digest #FFFFE0
+participant "GitHub\nREST API" as GitHub #24292E
+
+' ── Trigger (OpenClaw or UI) ──────────────────────────────────────────────────
+
+group #E8F4F8 "Trigger — OpenClaw (restricted mode) or Observatory UI"
+  OpenClaw -[#DAA000]> Orch : <color:#DAA000><b>POST /mcp { method: run_secure_devops_flow,\nparams: { repo, goal } }</b>\n⚠ No credentials sent</color>
+  UI -[#2D9CDB]> Orch : <color:#2D9CDB><b>POST /mcp { method: run_secure_devops_flow,\nparams: { repo, goal, auth0_refresh_token? } }</b></color>
+end
+
+' ── Step 1: Auth0 Token Vault exchange ────────────────────────────────────────
+
+group #FFF3EC "Step 1 — Auth0 Token Vault: RFC 8693 Token Exchange"
+  Orch -[#EB5424]> Vault : <color:#EB5424><b>grant_type=\nurn:ietf:params:oauth:grant-type:token-exchange\nsubject_token=<auth0_refresh_token>\nscope=repo read:user</b></color>
+  activate Vault #FFD0B0
+  Vault --[#EB5424]> Orch : <color:#EB5424><b>access_token (scoped · short-lived)\n↳ held in-memory only · never logged</b></color>
+  deactivate Vault
+  Orch -[#808080]> Orch : <color:#808080><i>token_vault_used = True\nVaultToken frozen dataclass\n__repr__ redacts value</i></color>
+end
+
+' ── Step 2: GitHub repo read ──────────────────────────────────────────────────
+
+group #F0F0F0 "Step 2 — GitHub: Read repository (scoped token)"
+  Orch -[#24292E]> GitHub : <color:#555555><b>GET /repos/{owner}/{repo}\nGET /repos/{owner}/{repo}/contents</b>\nAuthorization: Bearer <scoped_token></color>
+  activate GitHub #E0E0E0
+  GitHub --[#24292E]> Orch : <color:#555555>repo metadata · file tree · default branch</color>
+  deactivate GitHub
+end
+
+' ── Step 3: Planner ───────────────────────────────────────────────────────────
+
+group #E8F0FF "Step 3 — Planner Agent: Goal classification"
+  Orch -[#0000FF]> Planner : <color:#0000FF><b>MCP: plan_with_reasoning\n{ description, context, file_tree }</b></color>
+  activate Planner #D0E8FF
+  Planner -[#808080]> Planner : <color:#808080><i>Claude: classify goal\ntask_type · complexity · plan_steps</i></color>
+  Planner --[#0000FF]> Orch : <color:#0000FF>classification: { task_type: security_fix,\ncomplexity: high, plan_steps: [...] }</color>
+  deactivate Planner
+end
+
+' ── Step 4: Risks Phase 1 ─────────────────────────────────────────────────────
+
+group #FFE8E8 "Step 4 — Risks Agent: Pre-implementation assessment (Phase 1)"
+  Orch -[#DC143C]> Risks : <color:#DC143C><b>MCP: analyze_risks\n{ feature, classification, file_tree }</b></color>
+  activate Risks #FFD0D0
+  Risks -[#808080]> Risks : <color:#808080><i>Claude: identify design risks,\nCVE dependencies, security gaps\ngo / no-go recommendation</i></color>
+  Risks --[#DC143C]> Orch : <color:#DC143C>overall_risk: HIGH · issues_found: 3\nexecutive_summary · go_no_go: CONDITIONAL</color>
+  deactivate Risks
+end
+
+' ── Step 5: Code Execution ────────────────────────────────────────────────────
+
+group #E0FFFF "Step 5 — Code Execution: Generate, test, self-debug"
+  Orch -[#00CED1]> Code : <color:#00CED1><b>MCP: generate_fix_and_create_pr\n{ repo, goal, risks, classification, file_tree,\ngithub_token ← in-memory only }</b></color>
+  activate Code #C0F0F0
+  Code -[#808080]> Code : <color:#808080><i>iter 0: Claude generates fix + tests\nsubprocess: run tests\n4/5 pass — TypeError in edge case</i></color>
+  Code -[#808080]> Code : <color:#808080><i>REFLECTION: analyse failure\nrewrite fix</i></color>
+  Code -[#808080]> Code : <color:#808080><i>iter 1: rerun tests\n5/5 pass — production_ready=true</i></color>
+  Code --[#00CED1]> Orch : <color:#00CED1>patch_files: [ { path, content_base64, sha } ]\ntests_passed: 5 · quality_score: 0.87</color>
+  deactivate Code
+end
+
+' ── Step 5b: Risks Phase 2 ────────────────────────────────────────────────────
+
+group #FFE8E8 "Step 5b — Risks Agent: Post-generation patch security gate (Phase 2)"
+  Orch -[#DC143C]> Risks : <color:#DC143C><b>MCP: validate_patch_security\n{ patch_files, repo }</b></color>
+  activate Risks #FFD0D0
+  Risks -[#808080]> Risks : <color:#808080><i>scan for: eval( · exec( · os.system(\nhardcoded secrets · shell injection\nany CRITICAL → block PR</i></color>
+  Risks --[#DC143C]> Orch : <color:#DC143C>security_passed: true · violations: 0\nrisk_score: 0 · policy: patch_security_policy_v1</color>
+  deactivate Risks
+end
+
+' ── Step 6: GitHub PR ─────────────────────────────────────────────────────────
+
+group #F0F0F0 "Step 6 — GitHub: Create branch · commit · open PR (scoped token)"
+  Orch -[#24292E]> GitHub : <color:#555555><b>POST /repos/{owner}/{repo}/git/refs\n↳ create branch: fix/jwt-security-hardening</b></color>
+  activate GitHub #E0E0E0
+  GitHub --[#24292E]> Orch : <color:#555555>branch created</color>
+
+  Orch -[#24292E]> GitHub : <color:#555555><b>PUT /repos/{owner}/{repo}/contents/{path}\n↳ commit patch (base64)</b></color>
+  GitHub --[#24292E]> Orch : <color:#555555>commit sha</color>
+
+  Orch -[#24292E]> GitHub : <color:#555555><b>POST /repos/{owner}/{repo}/pulls\n↳ title: "🤖 [AI Security Fix] {goal}"\nbody: risk summary + token_vault_used: true</b></color>
+  GitHub --[#24292E]> Orch : <color:#555555>PR #42 · html_url · scoped token → GC'd</color>
+  deactivate GitHub
+end
+
+' ── Step 7: Progress ──────────────────────────────────────────────────────────
+
+group #E8FFE8 "Step 7 — Progress Agent: Repository health metrics"
+  Orch -[#228B22]> Progress : <color:#228B22><b>MCP: track_progress\n{ repo, pr_created, issues_found_count, risk_level }</b></color>
+  activate Progress #C0F0C0
+  Progress --[#228B22]> Orch : <color:#228B22>velocity: on_track · health_status: HEALTHY\ncompletion_rate: 12.5%</color>
+  deactivate Progress
+end
+
+' ── Step 8: Digest ────────────────────────────────────────────────────────────
+
+group #FFF8E8 "Step 8 — Digest Agent: Executive summary"
+  Orch -[#9932CC]> Digest : <color:#9932CC><b>MCP: generate_digest\n{ repo, goal, risk_level, issues_found,\npr_url, pr_number, progress }</b></color>
+  activate Digest #F8E0FF
+  Digest -[#808080]> Digest : <color:#808080><i>Claude: generate Markdown summary\n+ compact Slack message</i></color>
+  Digest --[#9932CC]> Orch : <color:#9932CC>summary · quality_state: HEALTHY\nslack_message</color>
+  deactivate Digest
+end
+
+' ── Final response ────────────────────────────────────────────────────────────
+
+group #E8F4F8 "Final response to caller"
+  Orch --[#DAA000]> OpenClaw : <color:#DAA000><b>{ status: success, pr_url, risk_level,\nissues_found, summary,\ntoken_vault_used: true, reasoning: [...] }</b></color>
+  Orch --[#2D9CDB]> UI : <color:#2D9CDB><b>{ status: success, pr_url, risk_level,\nissues_found, summary,\ntoken_vault_used: true, reasoning: [...] }</b></color>
+end
+
+' ── Legend ────────────────────────────────────────────────────────────────────
+
+legend right
+  |= Color |= Meaning                                |
+  |= <color:#EB5424>■</color> |= Auth0 Token Vault (RFC 8693)          |
+  |= <color:#DAA000>■</color> |= OpenClaw gateway call / response      |
+  |= <color:#2D9CDB>■</color> |= Observatory UI call / response        |
+  |= <color:#0000FF>■</color> |= Planner (goal classification)         |
+  |= <color:#DC143C>■</color> |= Risks (Phase 1 planning + Phase 2 gate) |
+  |= <color:#00CED1>■</color> |= Code Execution (generate + self-debug) |
+  |= <color:#228B22>■</color> |= Progress (repo health metrics)         |
+  |= <color:#9932CC>■</color> |= Digest (executive summary)            |
+  |= <color:#555555>■</color> |= GitHub API (scoped token, in-memory)  |
+  |= <color:#808080>■</color> |= Internal agent reasoning (Claude LLM) |
+endlegend
+
+@enduml
