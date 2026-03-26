@@ -1,0 +1,154 @@
+@startuml
+!theme plain
+skinparam shadowing false
+skinparam backgroundColor white
+skinparam componentStyle rectangle
+skinparam padding 4
+
+skinparam component {
+  BorderColor #333333
+  FontSize 12
+  ArrowThickness 2
+}
+
+skinparam note {
+  BackgroundColor #FFFACD
+  BorderColor #DAA520
+  FontSize 11
+}
+
+skinparam package {
+  BorderColor #555555
+  FontSize 13
+  FontStyle bold
+}
+
+title Authorized DevOps Agent — Architecture\n(Auth0 Token Vault · RFC 8693 · 6 Agents)
+
+' ── External actors ───────────────────────────────────────────────────────────
+
+actor "Developer / User" as dev #87CEEB
+component "OpenClaw\n(local AI — restricted mode)" as openclaw #FFD700
+
+' ── Auth0 / Identity ─────────────────────────────────────────────────────────
+
+cloud "Auth0 Identity Platform" {
+  component "Token Vault\n(RFC 8693 Token Exchange)" as tokenVault #EB5424
+  component "Connected Accounts\n(GitHub OAuth)" as connectedAccounts #EB5424
+}
+
+' ── External APIs ─────────────────────────────────────────────────────────────
+
+cloud "External Services" {
+  component "GitHub REST API\nv2022-11-28" as github #24292E
+  component "Slack\n(Incoming Webhooks)" as slack #4A154B
+  component "Anthropic Claude\n3.5 Sonnet" as llm #5A67D8
+}
+
+' ── Frontend ──────────────────────────────────────────────────────────────────
+
+component "Observatory UI\n(Netlify — static HTML)" as ui #2D9CDB
+
+' ── Docker Compose network ────────────────────────────────────────────────────
+
+package "Docker Compose Network" {
+
+  component "Orchestrator\n:8600\n\n🔐 Token Vault client\n(ONLY agent with Auth0 access)" as orchestrator #EB5424
+
+  component "Planner\n:8601\n\n📋 Goal classification\nTask decomposition" as planner #87CEEB
+
+  component "Risks\n:8603\n\n⚠️ Dual-pass security\nPhase 1: planning gate\nPhase 2: patch gate" as risks #F08080
+
+  component "Code Execution\n:8605\n\n⚙️ Fix generation\nSelf-debug loop\nSandbox tests" as codeexec #00CED1
+
+  component "Progress\n:8602\n\n📈 Repo health metrics\nVelocity analysis" as progress #90EE90
+
+  component "Digest\n:8604\n\n📝 Executive summary\nSlack message" as digest #FFFFE0
+
+  component "Static Server\n:8000\n\nNginx — serves UI" as static #D3D3D3
+
+}
+
+' ── Notes ─────────────────────────────────────────────────────────────────────
+
+note right of orchestrator
+  <b>Token isolation:</b>
+  auth0_token_vault.py is imported
+  ONLY here — enforced at
+  import level, not policy.
+  AUTH0_CLIENT_SECRET injected
+  only into this container.
+end note
+
+note right of risks
+  <b>Dual-pass gate:</b>
+  Phase 1: before code is written
+  Phase 2: after code is generated
+  Critical violation → PR blocked
+end note
+
+note right of codeexec
+  <b>Self-debug loop:</b>
+  generate → test → reflect → fix
+  Up to 3 iterations
+  production_ready=true on pass
+end note
+
+note bottom of openclaw
+  <b>Restricted mode:</b>
+  No API keys stored locally.
+  Sends plain-language goal via MCP.
+  Never receives the GitHub token.
+end note
+
+' ── Connections ───────────────────────────────────────────────────────────────
+
+' User / OpenClaw → UI / Orchestrator
+dev -[#2D9CDB]-> ui : <color:#2D9CDB>opens Observatory UI</color>
+openclaw -[#FFD700]-> orchestrator : <color:#DAA000>MCP call: run_secure_devops_flow\n(goal + repo, no credentials)</color>
+ui -[#2D9CDB]-> orchestrator : <color:#2D9CDB>POST /mcp</color>
+
+' Orchestrator → Auth0
+orchestrator -[#EB5424]-> tokenVault : <color:#EB5424>RFC 8693 token exchange\ngrant_type=token-exchange</color>
+connectedAccounts -[#EB5424]-> tokenVault : <color:#EB5424>GitHub OAuth scope</color>
+tokenVault -[#EB5424]-> orchestrator : <color:#EB5424>short-lived scoped token\n(in-memory · TTL ~60s)</color>
+
+' Orchestrator → sub-agents (MCP calls, token passed in-memory)
+orchestrator -[#0000FF]-> planner : <color:#0000FF>MCP: plan_with_reasoning</color>
+orchestrator -[#DC143C]-> risks : <color:#DC143C>MCP: analyze_risks\n+ validate_patch_security</color>
+orchestrator -[#00CED1]-> codeexec : <color:#00CED1>MCP: generate_fix_and_create_pr\n(github_token passed in-memory)</color>
+orchestrator -[#228B22]-> progress : <color:#228B22>MCP: track_progress</color>
+orchestrator -[#9932CC]-> digest : <color:#9932CC>MCP: generate_digest</color>
+
+' Sub-agents → LLM
+planner -[#5A67D8]-> llm : <color:#5A67D8>LLM reasoning</color>
+risks -[#5A67D8]-> llm : <color:#5A67D8>LLM risk analysis</color>
+codeexec -[#5A67D8]-> llm : <color:#5A67D8>LLM code generation</color>
+digest -[#5A67D8]-> llm : <color:#5A67D8>LLM summarization</color>
+
+' Orchestrator → GitHub (with scoped token)
+orchestrator -[#24292E]-> github : <color:#555555>GitHub API: read repo\ncreate branch · commit · PR\n(scoped token, in-memory)</color>
+
+' Digest → Slack
+digest -[#4A154B]-> slack : <color:#4A154B>Slack notification</color>
+
+' Static server
+static -[#D3D3D3]-> ui : <color:#888888>serves index.html</color>
+
+' ── Legend ────────────────────────────────────────────────────────────────────
+
+legend right
+  |= Color |= Meaning                          |
+  |= <color:#EB5424>■</color> |= Auth0 Token Vault (identity)    |
+  |= <color:#FFD700>■</color> |= OpenClaw gateway call           |
+  |= <color:#2D9CDB>■</color> |= Observatory UI                  |
+  |= <color:#0000FF>■</color> |= Planner orchestration           |
+  |= <color:#DC143C>■</color> |= Risk analysis (dual-pass)       |
+  |= <color:#00CED1>■</color> |= Code execution / self-debug     |
+  |= <color:#228B22>■</color> |= Progress metrics                |
+  |= <color:#9932CC>■</color> |= Digest / summarization          |
+  |= <color:#5A67D8>■</color> |= LLM calls (Claude 3.5 Sonnet)   |
+  |= <color:#555555>■</color> |= GitHub API (scoped token)       |
+endlegend
+
+@enduml
