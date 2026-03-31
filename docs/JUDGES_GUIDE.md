@@ -1,8 +1,9 @@
-# Authorized DevOps Agent — Judges Guide
+# [Authorized DevOps Agent — Judges Guide]()
 
 **Hackathon:** [Authorized to Act — Auth0 × Devpost](https://authorizedtoact.devpost.com/)  
 **Live Demo:** [https://authorized-devops-agent.netlify.app](https://authorized-devops-agent.netlify.app)  
-**Repository:** [https://github.com/Exsellent/Authorized-DevOps-Agent](https://github.com/Exsellent/Authorized-DevOps-Agent)
+**Repository:
+** [https://github.com/Exsellent/Authorized-DevOps-Agent](https://github.com/Exsellent/Authorized-DevOps-Agent)
 
 ---
 
@@ -147,14 +148,14 @@ Full output is in **`results_script.md`** in this archive.
 
 ### What this validates
 
-| Test   | Agent                | What to check                                       |
-|--------|----------------------|-----------------------------------------------------|
-| 1      | Planner :8601        | Task classification, subtask decomposition          |
-| 2      | Risks :8603          | Security analysis, risk scoring                     |
-| 3      | Progress :8602       | Velocity signal, LLM commit summary                 |
-| 4      | Digest :8604         | `quality_state=HEALTHY`, summary generation         |
-| 5      | Orchestrator :8600   | `triage_single` — classification + priority routing |
-| 6      | Code Execution :8605 | Full fix + test pipeline, `auth0_token_vault=true`  |
+| Test | Agent                | What to check                                       |
+|------|----------------------|-----------------------------------------------------|
+| 1    | Planner :8601        | Task classification, subtask decomposition          |
+| 2    | Risks :8603          | Security analysis, risk scoring                     |
+| 3    | Progress :8602       | Velocity signal, LLM commit summary                 |
+| 4    | Digest :8604         | `quality_state=HEALTHY`, summary generation         |
+| 5    | Orchestrator :8600   | `triage_single` — classification + priority routing |
+| 6    | Code Execution :8605 | Full fix + test pipeline, `auth0_token_vault=true`  |
 
 ### ✅ Expected result — Code Execution
 
@@ -168,7 +169,8 @@ Full output is in **`results_script.md`** in this archive.
 }
 ```
 
-`code_hash` in `patch_files` matches `verification_artifact.code_hash` — the patch committed to GitHub is byte-for-byte identical to the code that passed the sandbox.
+`code_hash` in `patch_files` matches `verification_artifact.code_hash` — the patch committed to GitHub is byte-for-byte
+identical to the code that passed the sandbox.
 
 ---
 

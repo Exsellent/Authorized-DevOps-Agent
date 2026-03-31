@@ -1,6 +1,7 @@
 # API Reference — Authorized DevOps Agent
 
 All agents expose two endpoints:
+
 - `GET /health` — liveness check
 - `POST /mcp` — MCP tool invocation
 
@@ -13,10 +14,12 @@ All agents expose two endpoints:
 Main pipeline entry point. Called by the UI.
 
 **Request:**
+
 ```http
 POST http://localhost:8600/mcp
 Content-Type: application/json
 ```
+
 ```json
 {
   "method": "tools/run_secure_devops_flow",
@@ -30,23 +33,31 @@ Content-Type: application/json
 
 **Parameters:**
 
-| Field                  | Type   | Required | Description                                                      |
-|------------------------|--------|----------|------------------------------------------------------------------|
-| `repo`                 | string | ✅        | GitHub repository in `owner/repo` format                         |
-| `goal`                 | string | ✅        | Natural language goal for the agent                              |
-| `auth0_refresh_token`  | string | ❌        | Auth0 refresh token (falls back to `AUTH0_REFRESH_TOKEN` env)    |
-| `auth0_access_token`   | string | ❌        | Auth0 access token (fallback if refresh unavailable)             |
-| `base_branch`          | string | ❌        | Target branch for PR (default `"main"`)                          |
-| `slack_notify`         | bool   | ❌        | Send Slack summary when done (default `true`)                    |
+| Field                 | Type   | Required | Description                                                   |
+|-----------------------|--------|----------|---------------------------------------------------------------|
+| `repo`                | string | ✅        | GitHub repository in `owner/repo` format                      |
+| `goal`                | string | ✅        | Natural language goal for the agent                           |
+| `auth0_refresh_token` | string | ❌        | Auth0 refresh token (falls back to `AUTH0_REFRESH_TOKEN` env) |
+| `auth0_access_token`  | string | ❌        | Auth0 access token (fallback if refresh unavailable)          |
+| `base_branch`         | string | ❌        | Target branch for PR (default `"main"`)                       |
+| `slack_notify`        | bool   | ❌        | Send Slack summary when done (default `true`)                 |
 
 **Response:**
+
 ```json
 {
   "status": "success",
   "pr_url": "https://github.com/owner/repo/pull/42",
   "pr_number": 42,
   "risk_level": "HIGH",
-  "issues_found": [{"title": "Hardcoded JWT secret", "severity": "HIGH", "category": "security", "priority": 1}],
+  "issues_found": [
+    {
+      "title": "Hardcoded JWT secret",
+      "severity": "HIGH",
+      "category": "security",
+      "priority": 1
+    }
+  ],
   "summary": "## 📋 Summary\n\nThe AI agent fixed JWT validation...\n\n## 🔐 Security & Risk\n\n...",
   "token_vault_used": true,
   "timestamp": "2026-03-01T14:22:11.000Z",
@@ -55,8 +66,16 @@ Content-Type: application/json
       "step_number": 1,
       "description": "Token Vault: obtaining scoped GitHub token via RFC 8693",
       "timestamp": "2026-03-01T14:22:00.123Z",
-      "input_data": {"connection": "github", "scopes": ["repo"]},
-      "output": {"token_type": "bearer", "scope": "repo read:user"},
+      "input_data": {
+        "connection": "github",
+        "scopes": [
+          "repo"
+        ]
+      },
+      "output": {
+        "token_type": "bearer",
+        "scope": "repo read:user"
+      },
       "agent": "Orchestrator"
     }
   ],
@@ -87,6 +106,7 @@ Content-Type: application/json
 Classify a goal and decompose into subtasks.
 
 **Request:**
+
 ```json
 {
   "method": "tools/plan_with_reasoning",
@@ -96,15 +116,24 @@ Classify a goal and decompose into subtasks.
     "title": "Fix JWT secret hardcoded in source",
     "issue_number": 17,
     "repo": "owner/repo",
-    "file_tree": ["src/auth.py", "src/config.py", "requirements.txt"]
+    "file_tree": [
+      "src/auth.py",
+      "src/config.py",
+      "requirements.txt"
+    ]
   }
 }
 ```
 
 **Response:**
+
 ```json
 {
-  "classification": {"task_type": "security_fix", "complexity": "high", "priority_hint": "P0"},
+  "classification": {
+    "task_type": "security_fix",
+    "complexity": "high",
+    "priority_hint": "P0"
+  },
   "complexity": "high",
   "estimated_hours": 4,
   "priority": "P0",
@@ -122,13 +151,16 @@ Classify a goal and decompose into subtasks.
       "estimated_hours": 0.5
     }
   ],
-  "reasoning": [...]
+  "reasoning": [
+    ...
+  ]
 }
 ```
 
 ### `risk_aware_planning`
 
 Planning with risk integration from Risks Agent output.
+
 ```json
 {
   "method": "tools/risk_aware_planning",
@@ -149,6 +181,7 @@ Planning with risk integration from Risks Agent output.
 Full proactive risk assessment with LLM analysis.
 
 **Request:**
+
 ```json
 {
   "method": "tools/analyze_risks",
@@ -162,7 +195,10 @@ Full proactive risk assessment with LLM analysis.
       "task_type": "security_fix",
       "complexity": "high"
     },
-    "file_tree": ["src/auth.py", "src/config.py"]
+    "file_tree": [
+      "src/auth.py",
+      "src/config.py"
+    ]
   }
 }
 ```
@@ -180,6 +216,7 @@ Full proactive risk assessment with LLM analysis.
 | `file_tree`      | list   | ❌        | Repo file names for context          |
 
 **Response:**
+
 ```json
 {
   "feature": "Implement OAuth2 authentication with GitHub",
@@ -212,17 +249,24 @@ Full proactive risk assessment with LLM analysis.
     "confidence_level": "high"
   },
   "automated_actions": {
-    "actions": ["require_senior_review", "require_security_review", "notify_pm"],
+    "actions": [
+      "require_senior_review",
+      "require_security_review",
+      "notify_pm"
+    ],
     "block_pr": false,
     "require_review": true
   },
-  "reasoning": [...]
+  "reasoning": [
+    ...
+  ]
 }
 ```
 
 ### `assess_feature_risk`
 
 Quick baseline-only assessment (no LLM call).
+
 ```json
 {
   "method": "tools/assess_feature_risk",
@@ -243,6 +287,7 @@ Quick baseline-only assessment (no LLM call).
 Primary tool — generates fix, tests, debug loop, returns patch files.
 
 **Request:**
+
 ```json
 {
   "method": "tools/generate_fix_and_create_pr",
@@ -250,13 +295,20 @@ Primary tool — generates fix, tests, debug loop, returns patch files.
     "repo": "owner/repo",
     "goal": "Fix hardcoded JWT secret — move to environment variable",
     "risks": [
-      {"severity": "high", "title": "Hardcoded secret in source"}
+      {
+        "severity": "high",
+        "title": "Hardcoded secret in source"
+      }
     ],
     "classification": {
       "task_type": "security_fix",
       "complexity": "medium"
     },
-    "file_tree": ["src/auth.py", "src/config.py", "requirements.txt"],
+    "file_tree": [
+      "src/auth.py",
+      "src/config.py",
+      "requirements.txt"
+    ],
     "max_debug_iter": 2
   }
 }
@@ -266,6 +318,7 @@ Primary tool — generates fix, tests, debug loop, returns patch files.
 > Code Execution generates patch files; the Orchestrator handles all GitHub API calls itself.
 
 **Response:**
+
 ```json
 {
   "patch_files": [
@@ -296,16 +349,23 @@ Primary tool — generates fix, tests, debug loop, returns patch files.
     "quality_score": 0.87,
     "production_ready": true,
     "test_details": [
-      {"test_id": "test_1", "passed": true, "execution_time_ms": 45.2}
+      {
+        "test_id": "test_1",
+        "passed": true,
+        "execution_time_ms": 45.2
+      }
     ]
   },
-  "reasoning": [...]
+  "reasoning": [
+    ...
+  ]
 }
 ```
 
 ### `generate_and_test_code`
 
 Standalone code generation and test cycle (not called by Orchestrator).
+
 ```json
 {
   "method": "tools/generate_and_test_code",
@@ -320,6 +380,7 @@ Standalone code generation and test cycle (not called by Orchestrator).
 ### `autonomous_debug_loop`
 
 Continue debugging a previous session.
+
 ```json
 {
   "method": "tools/autonomous_debug_loop",
@@ -339,6 +400,7 @@ Continue debugging a previous session.
 Calculate repository health from pipeline results.
 
 **Request:**
+
 ```json
 {
   "method": "tools/track_progress",
@@ -354,6 +416,7 @@ Calculate repository health from pipeline results.
 ```
 
 **Response:**
+
 ```json
 {
   "repo": "owner/repo",
@@ -365,7 +428,9 @@ Calculate repository health from pipeline results.
     "completion_rate": "12.5%",
     "headline": "On track — 12.5% complete",
     "interpretation": "The AI agent resolved 1 of 8 open issues...",
-    "auto_actions": ["update_dashboard"],
+    "auto_actions": [
+      "update_dashboard"
+    ],
     "urgency": "medium",
     "confidence": "medium",
     "llm_enhanced": true
@@ -379,7 +444,9 @@ Calculate repository health from pipeline results.
     "risk_level": "HIGH"
   },
   "automated_actions": {
-    "actions": ["update_dashboard"],
+    "actions": [
+      "update_dashboard"
+    ],
     "triggers": {
       "notify_pm": false,
       "alert_leadership": false,
@@ -387,13 +454,16 @@ Calculate repository health from pipeline results.
       "slack_notify": false
     }
   },
-  "reasoning": [...]
+  "reasoning": [
+    ...
+  ]
 }
 ```
 
 ### `analyze_progress`
 
 Analyse commit messages for velocity signals.
+
 ```json
 {
   "method": "tools/analyze_progress",
@@ -417,6 +487,7 @@ Analyse commit messages for velocity signals.
 Generate executive summary from full pipeline results.
 
 **Request:**
+
 ```json
 {
   "method": "tools/generate_digest",
@@ -425,19 +496,25 @@ Generate executive summary from full pipeline results.
     "goal": "Fix JWT token validation vulnerability",
     "risk_level": "HIGH",
     "issues_found": [
-      {"title": "Hardcoded JWT secret", "severity": "high"}
+      {
+        "title": "Hardcoded JWT secret",
+        "severity": "high"
+      }
     ],
     "pr_url": "https://github.com/owner/repo/pull/42",
     "pr_number": 42,
     "progress": {
       "health_status": "on_track",
-      "metrics": {"completion_rate": 12.5}
+      "metrics": {
+        "completion_rate": 12.5
+      }
     }
   }
 }
 ```
 
 **Response:**
+
 ```json
 {
   "summary": "## 📋 Summary\n\nThe AI agent addressed a high-severity JWT secret exposure in `owner/repo`. A pull request was created with the proposed fix...\n\n## 🔐 Security & Risk\n\n- Overall risk: **HIGH**\n- Issues identified: 1\n  - [HIGH] Hardcoded JWT secret\n\n## 🔗 Pull Request\n\nPR #42: https://github.com/owner/repo/pull/42\n\n## ✅ Next Steps\n\n- Review the PR and run the full test suite\n- Rotate the exposed JWT secret immediately\n- Re-run the agent after applying fixes",
@@ -451,17 +528,24 @@ Generate executive summary from full pipeline results.
     "confidence": 0.9
   },
   "automated_actions": {
-    "actions": ["post_to_github_comment", "send_to_slack", "notify_pm"],
+    "actions": [
+      "post_to_github_comment",
+      "send_to_slack",
+      "notify_pm"
+    ],
     "escalation_level": "pm",
     "celebration": false
   },
-  "reasoning": [...]
+  "reasoning": [
+    ...
+  ]
 }
 ```
 
 ---
 
 ## Health Checks
+
 ```bash
 # All agents
 curl http://localhost:8600/health   # Orchestrator
@@ -473,6 +557,7 @@ curl http://localhost:8605/health   # Code Execution
 ```
 
 Expected response:
+
 ```json
 {
   "status": "ok",
@@ -485,17 +570,30 @@ Expected response:
 ## Error Responses
 
 All agents return consistent error shapes:
+
 ```json
 {
   "error": "Unknown tool: nonexistent_tool",
-  "available_tools": ["analyze_risks", "assess_feature_risk"]
+  "available_tools": [
+    "analyze_risks",
+    "assess_feature_risk"
+  ]
 }
 ```
+
 ```json
 {
   "error": "Invalid parameters for 'analyze_risks'",
   "details": "missing required argument: 'feature'",
   "received_params": [],
-  "expected_params": ["feature", "issue_number", "title", "context", "classification", "file_tree", "repo"]
+  "expected_params": [
+    "feature",
+    "issue_number",
+    "title",
+    "context",
+    "classification",
+    "file_tree",
+    "repo"
+  ]
 }
 ```

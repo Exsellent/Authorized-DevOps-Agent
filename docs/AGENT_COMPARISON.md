@@ -7,25 +7,26 @@ Each agent has a distinct responsibility and does NOT import `auth0_token_vault`
 
 ### Side-by-Side Comparison
 
-| Property              | Orchestrator | Planner | Risks | Code Execution | Progress | Digest   |
-|-----------------------|--------------|---------|-------|----------------|----------|----------|
-| Port                  | 8600         | 8601    | 8603  | 8605           | 8602     | 8604     |
-| Auth0 Token Vault     | ✅           | ❌      | ❌    | ❌             | ❌       | ❌       |
-| GitHub API            | ✅           | ❌      | ❌    | ❌             | ❌       | ❌       |
-| Claude LLM            | ✅           | ✅      | ✅    | ✅             | ✅       | ✅       |
-| Calls other agents    | ✅ all 5     | ❌      | ❌    | ❌             | ❌       | ❌       |
-| Fallback strategy     | partial      | baseline| baseline | baseline    | baseline | structured |
-| Has debug loop        | ❌           | ❌      | ❌    | ✅ (up to 3)   | ❌       | ❌       |
-| Returns patch_files   | ❌           | ❌      | ❌    | ✅             | ❌       | ❌       |
-| Returns Slack msg     | ❌           | ❌      | ❌    | ❌             | ❌       | ✅       |
-| GitHub Token access   | ✅ VaultToken| ❌      | ❌    | ❌             | ❌       | ❌       |
-
+```
+| Property            | Orchestrator | Planner |   Risks     | Code Execution | Progress | Digest     |
+|---------------------|:------------:|:-------:|:-----------:|:--------------:|:--------:|:----------:|
+| Port                | 8600         | 8601    | 8603        | 8605           | 8602     | 8604       |
+| Auth0 Token Vault   | ✅           | ❌      |     ❌     | ❌             | ❌       | ❌         |
+| GitHub API          | ✅           | ❌      |     ❌     | ❌             | ❌       | ❌         |
+| Claude LLM          | ✅           | ✅      |     ✅     | ✅             | ✅       | ✅         |
+| Calls other agents  | ✅ all 5     | ❌      |     ❌     | ❌             | ❌       | ❌         |
+| Fallback strategy   | partial      | baseline| baseline    | baseline       | baseline | structured |
+| Has debug loop      | ❌           | ❌      |     ❌     | ✅             | ❌       | ❌         |
+| Returns patch_files | ❌           | ❌      |     ❌     | ✅             | ❌       | ❌         |
+| Returns Slack msg   | ❌           | ❌      |     ❌     | ❌             | ❌       | ✅         |
+```
 
 ## Orchestrator
 
 **Role:** Central coordinator. Entry point for every pipeline run.
 
 **Unique responsibilities:**
+
 - Auth0 Token Vault → scoped GitHub token (only agent with `AUTH0_CLIENT_SECRET`)
 - GitHub API: read repo, create branch, commit files, create PR
 - Sequence and error-handle all 5 sub-agents
@@ -34,6 +35,7 @@ Each agent has a distinct responsibility and does NOT import `auth0_token_vault`
 **Primary tool:** `run_secure_devops_flow`
 
 **Does NOT:**
+
 - Generate code
 - Assess risks directly
 - Store the GitHub token beyond the request
@@ -45,6 +47,7 @@ Each agent has a distinct responsibility and does NOT import `auth0_token_vault`
 **Role:** Understand the goal and create an actionable execution plan.
 
 **Unique responsibilities:**
+
 - Classify goal into `task_type` (security_fix, dependency_update, api_development, bug_fix, feature)
 - Decompose into subtasks with priority ordering
 - Estimate effort using historical velocity data (ML-based)
@@ -53,6 +56,7 @@ Each agent has a distinct responsibility and does NOT import `auth0_token_vault`
 **Primary tool:** `plan_with_reasoning`
 
 **Output consumed by:**
+
 - Orchestrator (classification → passed to Risks and Code Execution)
 - Risks Agent (`complexity` field affects overall risk level)
 - Code Execution Agent (`task_type` → fix strategy and filename)
@@ -108,6 +112,7 @@ the Claude JSON response.
 **Role:** Generate working code fixes, verify through execution, prepare for GitHub commit.
 
 **Unique responsibilities:**
+
 - Generate Python fix code (STRATEGIC → GENERATION phases)
 - Write executable `test_*` functions (not descriptions)
 - Run tests in isolated subprocesses
@@ -115,6 +120,7 @@ the Claude JSON response.
 - Return base64 patch files for GitHub API
 
 **Thinking levels:**
+
 ```
 STRATEGIC    → understand the goal, plan what to build
 GENERATION   → write fix code + test suite
@@ -125,19 +131,20 @@ REFLECTION   → fix failures, re-run (up to max_debug_iter times)
 
 **Bugs fixed vs. original Gemini agent:**
 
-| Bug                                    | Root Cause                                                   | Fix |
-|----------------------------------------|--------------------------------------------------------------|-----|
-| `ModuleNotFoundError` — all tests fail | No pip install before subprocess                             | `_install_deps()` auto-installs before execution |
+| Bug                                    | Root Cause                                                   | Fix                                                   |
+|----------------------------------------|--------------------------------------------------------------|-------------------------------------------------------|
+| `ModuleNotFoundError` — all tests fail | No pip install before subprocess                             | `_install_deps()` auto-installs before execution      |
 | All 5 tests run identical code         | Regex found function names but used full file as `test_code` | `_split_test_functions()` isolates each `test_*` body |
-| Golang requested → Python generated    | `language` param silently ignored                            | Explicit warning + enforced Python-only |
-| `ReasoningStep(output_data=...)`       | Wrong kwarg name vs dataclass field `output=`                | Fixed to `output=` |
+| Golang requested → Python generated    | `language` param silently ignored                            | Explicit warning + enforced Python-only               |
+| `ReasoningStep(output_data=...)`       | Wrong kwarg name vs dataclass field `output=`                | Fixed to `output=`                                    |
 
 **Quality scoring (deterministic — agent decides, not LLM):**
+
 ```python
-pass_rate  = tests_passed / tests_total
+pass_rate = tests_passed / tests_total
 perf_score = 1.0 if exec_ms < 1000 else 0.8
 size_score = 1.0 if 20 <= code_len <= 2000 else 0.7
-score      = (pass_rate * 0.7) + (perf_score * 0.2) + (size_score * 0.1)
+score = (pass_rate * 0.7) + (perf_score * 0.2) + (size_score * 0.1)
 production_ready = (tests_passed == tests_total and exec_ms < 5000)
 ```
 
@@ -150,6 +157,7 @@ production_ready = (tests_passed == tests_total and exec_ms < 5000)
 **Role:** Calculate repo health metrics from pipeline results.
 
 **Unique responsibilities:**
+
 - Classify velocity: `excellent` / `on_track` / `at_risk` / `critical`
 - Determine urgency and escalation actions
 - Factor in Risks Agent output (risk_level overrides velocity if CRITICAL)
@@ -159,12 +167,12 @@ production_ready = (tests_passed == tests_total and exec_ms < 5000)
 
 **Velocity thresholds:**
 
-| Status      | Completion %   | Urgency   | Actions                            |
-|-------------|:--------------:|:---------:|------------------------------------|
-| `excellent` |     ≥ 75%      |    low    | celebrate_team                     |
-| `on_track`  |     ≥ 50%      |  medium   | update_dashboard                   |
-| `at_risk`   |     ≥ 25%      |   high    | notify_pm, suggest_scope_reduction |
-| `critical`  |     < 25%      | immediate | alert_leadership, schedule_standup |
+| Status      | Completion % |  Urgency  | Actions                            |
+|-------------|:------------:|:---------:|------------------------------------|
+| `excellent` |    ≥ 75%     |    low    | celebrate_team                     |
+| `on_track`  |    ≥ 50%     |  medium   | update_dashboard                   |
+| `at_risk`   |    ≥ 25%     |   high    | notify_pm, suggest_scope_reduction |
+| `critical`  |    < 25%     | immediate | alert_leadership, schedule_standup |
 
 **Override rule:** If `risk_level == CRITICAL` and `velocity == excellent`,
 overrides to `at_risk` — risk trumps velocity.
@@ -178,6 +186,7 @@ overrides to `at_risk` — risk trumps velocity.
 **Role:** Generate executive summary and Slack notification from all pipeline results.
 
 **Unique responsibilities:**
+
 - Synthesize all agent outputs into human-readable Markdown
 - Build compact Slack message for `_build_slack_message()`
 - Validate report quality (`HEALTHY` / `WARNING` / `DEGRADED`)
@@ -204,7 +213,7 @@ for a PR summary with a risk list).
 
 All agents implement graceful degradation when LLM is unavailable:
 
-| Agent          |       LLM Available         |             LLM Unavailable                |
+| Agent          |        LLM Available        |              LLM Unavailable               |
 |----------------|:---------------------------:|:------------------------------------------:|
 | Planner        |       Full JSON plan        |   `_safe_parse_json` partial extraction    |
 | Risks          |    Claude JSON analysis     | Deterministic pattern matching on keywords |
