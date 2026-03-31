@@ -75,8 +75,6 @@ The system runs a **six‑agent autonomous pipeline**:
 
 The upstream agent (OpenClaw or any AI) never sees the GitHub token. The token exists for one request, is used, then garbage‑collected.
 
-https://github.com/Exsellent/Authorized-DevOps-Agent/raw/main/assets/demo-video-agents-fixed.mp4
-
 
 ---
 
@@ -141,6 +139,22 @@ The field `token_vault_used: true` appears in every API response and in the body
 `AUTH0_CLIENT_SECRET` is injected **only** into the Orchestrator container at the Docker Compose level. Sub‑agent containers are structurally isolated from it even if compromised.
 
 ---
+
+## 🔐 Security Model (Core Design)
+
+The system is built on a **zero-trust, capability-based architecture** where:
+
+- **No agent is trusted by default** — every action requires explicit authorization
+- **Capabilities are ephemeral** — access is granted via short-lived tokens only
+- **Secrets are never shared across boundaries** — only the Orchestrator can obtain credentials
+- **Execution is isolated by design** — agents operate in separate containers with no shared state
+- **All actions are policy-gated** — security checks run before and after code generation
+
+This architecture treats every agent as potentially compromised
+and still guarantees system-wide safety.
+
+____
+
 
 ## 🏭 Agent Pipeline
 
@@ -259,19 +273,36 @@ Observatory UI: [https://authorized-devops-agent.netlify.app](https://authorized
 ## 📚 Documentation
 
 - [Architecture Diagram (PlantUML)](docs/diagrams/architecture.puml)
-- [Pipeline Sequence (PlantUML)](docs/diagrams/sequence.puml)
+- [Pipeline Sequence (PNG)](docs/diagrams/sequence.png)
 - [API Reference](docs/API.md)
 - [Deployment Guide](docs/DEPLOYMENT.md)
 - [Architecture Notes](docs/Architecture.md)
 - [Agent Comparison](docs/AGENT_COMPARISON.md)
 
+
 ---
 
 ## 📝 License
 
-MIT License — see [LICENSE](LICENSE) file for details.
+MIT License — see ([LICENSE](LICENSE) file for details.
 
 ---
+
+## **Bonus Blog Post**  
+### **The AI Identity Crisis: How I Built a Gateway That Trusts No One**
+
+Building the Authorized DevOps Agent turned out to be less about wiring APIs and more about confronting what I now call the **AI Identity Crisis**. As a backend engineer, I’ve spent years securing systems for humans — but securing a system *for an LLM* is an entirely different challenge.
+
+At first, the task looked deceptively simple: let a local AI (OpenClaw) interact with GitHub. But the moment I started designing the flow, the core problem became obvious. Any long‑lived token I handed to the agent was a liability. A prompt injection, a logging slip, or even a malformed response could leak the keys to the kingdom. Hardening the agent wasn’t enough — I needed to **remove anything worth stealing**.
+
+The breakthrough came when I integrated **Auth0 Token Vault**. Using **RFC 8693 Token Exchange**, I pushed all credentials out of the agent layer entirely. The Orchestrator became the sole **Vault Keeper**. Sub‑agents never touch secrets; they don’t even import the modules capable of doing so. The GitHub token lives only in memory, scoped to a single request, and disappears after ~60 seconds.
+
+One of the hardest engineering challenges was enforcing this isolation structurally. I didn’t want “best practices.” I wanted **architectural guarantees**. By restricting imports, isolating containers, and implementing a dual‑pass security gate that scans generated patches before they ever reach GitHub, the system evolved from a DevOps helper into a **blueprint for Zero‑Trust AI execution**.
+
+This journey taught me something fundamental: in the age of autonomous agents, **security isn’t a feature — it *is* the architecture**. And the only trustworthy AI is the one that’s designed to trust no one.
+
+---
+
 
 *Built ❤️ for the [Authorized to Act: Auth0 for AI Agents Hackathon](https://authorizedtoact.devpost.com/)*  
 *Live demo: [https://authorized-devops-agent.netlify.app](https://authorized-devops-agent.netlify.app)*
