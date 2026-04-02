@@ -90,7 +90,7 @@ class PlannerAgent(MCPAgent):
 
     # Valid task types used in classification prompt and routing logic.
     TASK_TYPES = (
-        "security_fix",       # CVE patches, auth issues, secret leaks
+        "security_fix",  # CVE patches, auth issues, secret leaks
         "dependency_update",  # package bumps, vulnerability updates
         "api_development",
         "database_migration",

@@ -78,7 +78,7 @@ class GitHubClient:
             return r.json()
 
     async def list_files(
-        self, token: VaultToken, repo: str, path: str = ""
+            self, token: VaultToken, repo: str, path: str = ""
     ) -> List[Dict]:
         """List files/dirs at a given path in the default branch."""
         async with httpx.AsyncClient(timeout=15.0) as client:
@@ -91,7 +91,7 @@ class GitHubClient:
             return data if isinstance(data, list) else [data]
 
     async def get_file_content(
-        self, token: VaultToken, repo: str, file_path: str
+            self, token: VaultToken, repo: str, file_path: str
     ) -> Dict:
         """Download a single file (base64-encoded content + sha)."""
         async with httpx.AsyncClient(timeout=15.0) as client:
@@ -103,7 +103,7 @@ class GitHubClient:
             return r.json()
 
     async def create_branch(
-        self, token: VaultToken, repo: str, branch_name: str, base_branch: str = "main"
+            self, token: VaultToken, repo: str, branch_name: str, base_branch: str = "main"
     ) -> Dict:
         """Create a new branch from base_branch's HEAD sha."""
         # 1. resolve base sha
@@ -125,14 +125,14 @@ class GitHubClient:
             return r2.json()
 
     async def commit_file(
-        self,
-        token: VaultToken,
-        repo: str,
-        branch: str,
-        file_path: str,
-        content_base64: str,
-        message: str,
-        existing_sha: Optional[str] = None,
+            self,
+            token: VaultToken,
+            repo: str,
+            branch: str,
+            file_path: str,
+            content_base64: str,
+            message: str,
+            existing_sha: Optional[str] = None,
     ) -> Dict:
         """Create or update a file in the repo."""
         payload: Dict[str, Any] = {
@@ -153,13 +153,13 @@ class GitHubClient:
             return r.json()
 
     async def create_pull_request(
-        self,
-        token: VaultToken,
-        repo: str,
-        head_branch: str,
-        base_branch: str,
-        title: str,
-        body: str,
+            self,
+            token: VaultToken,
+            repo: str,
+            head_branch: str,
+            base_branch: str,
+            title: str,
+            body: str,
     ) -> Dict:
         """Open a Pull Request and return the PR object."""
         async with httpx.AsyncClient(timeout=15.0) as client:
@@ -177,7 +177,7 @@ class GitHubClient:
             return r.json()
 
     async def list_open_issues(
-        self, token: VaultToken, repo: str, limit: int = 20
+            self, token: VaultToken, repo: str, limit: int = 20
     ) -> List[Dict]:
         """Return open issues (excludes pull requests)."""
         async with httpx.AsyncClient(timeout=15.0) as client:
@@ -190,12 +190,12 @@ class GitHubClient:
             return [i for i in r.json() if "pull_request" not in i]
 
     async def create_issue(
-        self,
-        token: VaultToken,
-        repo: str,
-        title: str,
-        body: str,
-        labels: Optional[List[str]] = None,
+            self,
+            token: VaultToken,
+            repo: str,
+            title: str,
+            body: str,
+            labels: Optional[List[str]] = None,
     ) -> Dict:
         """Create a new GitHub issue."""
         async with httpx.AsyncClient(timeout=15.0) as client:
@@ -278,11 +278,11 @@ class OrchestratorAgent(MCPAgent):
     # ── Reasoning trail helpers ───────────────────────────────────────────────
 
     def _step(
-        self,
-        reasoning: List[ReasoningStep],
-        description: str,
-        input_data: Optional[Dict] = None,
-        output_data: Optional[Dict] = None,
+            self,
+            reasoning: List[ReasoningStep],
+            description: str,
+            input_data: Optional[Dict] = None,
+            output_data: Optional[Dict] = None,
     ) -> None:
         """Append a reasoning step (sensitive fields auto-redacted)."""
         reasoning.append(
@@ -299,12 +299,12 @@ class OrchestratorAgent(MCPAgent):
     # ── MCP agent call ────────────────────────────────────────────────────────
 
     async def _call_agent(
-        self,
-        url: str,
-        tool: str,
-        params: Dict,
-        *,
-        _retry_on_vault_error: bool = False,
+            self,
+            url: str,
+            tool: str,
+            params: Dict,
+            *,
+            _retry_on_vault_error: bool = False,
     ) -> Dict:
         """
         Invoke a downstream agent via MCP HTTP.
@@ -336,11 +336,11 @@ class OrchestratorAgent(MCPAgent):
         return result
 
     async def _github_call_with_retry(
-        self,
-        coro_factory,
-        subject_token: str,
-        use_refresh: bool,
-        reasoning: List[ReasoningStep],
+            self,
+            coro_factory,
+            subject_token: str,
+            use_refresh: bool,
+            reasoning: List[ReasoningStep],
     ):
         """
         Execute a GitHub API coroutine.  On httpx 401, initiate a fresh
@@ -378,13 +378,13 @@ class OrchestratorAgent(MCPAgent):
     @log_method
     @metric_counter("secure_devops_flow")
     async def run_secure_devops_flow(
-        self,
-        repo: str,
-        goal: str,
-        auth0_refresh_token: Optional[str] = None,   # UI passes if entered; else uses .env
-        auth0_access_token:  Optional[str] = None,
-        base_branch: str = "main",
-        slack_notify: bool = True,
+            self,
+            repo: str,
+            goal: str,
+            auth0_refresh_token: Optional[str] = None,  # UI passes if entered; else uses .env
+            auth0_access_token: Optional[str] = None,
+            base_branch: str = "main",
+            slack_notify: bool = True,
     ) -> Dict[str, Any]:
         """
         Full secure DevOps pipeline:
@@ -422,7 +422,7 @@ class OrchestratorAgent(MCPAgent):
         # Resolve token: UI field → .env → error
         # Allows token to live in the server environment (not sent by UI every call)
         resolved_refresh = auth0_refresh_token or os.getenv("AUTH0_REFRESH_TOKEN")
-        resolved_access  = auth0_access_token  or os.getenv("AUTH0_ACCESS_TOKEN")
+        resolved_access = auth0_access_token or os.getenv("AUTH0_ACCESS_TOKEN")
 
         if not resolved_refresh and not resolved_access:
             return {
@@ -744,7 +744,7 @@ class OrchestratorAgent(MCPAgent):
             "issues_found": issues_found,
             "risk_level": overall_risk,
             "summary": summary_text,
-            "token_vault_used": True,        # key proof for judges
+            "token_vault_used": True,  # key proof for judges
             "repo": repo,
             "goal": goal,
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -758,10 +758,10 @@ class OrchestratorAgent(MCPAgent):
     @log_method
     @metric_counter("triage")
     async def triage_issues(
-        self,
-        repo: str,
-        auth0_refresh_token: Optional[str] = None,   # UI or .env fallback
-        limit: int = 20,
+            self,
+            repo: str,
+            auth0_refresh_token: Optional[str] = None,  # UI or .env fallback
+            limit: int = 20,
     ) -> Dict[str, Any]:
         """
         Lightweight issue triage — classifies open issues and attaches labels.
@@ -831,7 +831,7 @@ class OrchestratorAgent(MCPAgent):
     @log_method
     @metric_counter("triage_single")
     async def triage_single_issue(
-        self, issue: Dict,
+            self, issue: Dict,
     ) -> Dict[str, Any]:
         """Classify a single issue via Planner + Risks."""
         title = issue.get("title", "")
@@ -903,7 +903,7 @@ class OrchestratorAgent(MCPAgent):
 
     @staticmethod
     def _generate_labels(
-        classification: Dict, priority: str, risk_level: str,
+            classification: Dict, priority: str, risk_level: str,
     ) -> List[str]:
         labels = [
             f"type::{classification.get('task_type', 'other')}",
@@ -917,10 +917,10 @@ class OrchestratorAgent(MCPAgent):
 
     @staticmethod
     def _build_pr_body(
-        goal: str,
-        issues_found: List,
-        overall_risk: str,
-        code_diff: str,
+            goal: str,
+            issues_found: List,
+            overall_risk: str,
+            code_diff: str,
     ) -> str:
         issues_md = "\n".join(
             f"- {i.get('title', i) if isinstance(i, dict) else i}"
@@ -948,11 +948,11 @@ class OrchestratorAgent(MCPAgent):
 
     @staticmethod
     def _build_slack_message(
-        repo: str,
-        goal: str,
-        pr_url: Optional[str],
-        risk: str,
-        summary: str,
+            repo: str,
+            goal: str,
+            pr_url: Optional[str],
+            risk: str,
+            summary: str,
     ) -> str:
         pr_line = f"🔗 PR: {pr_url}" if pr_url else "ℹ️ No PR created (no patches generated)"
         return (
@@ -966,11 +966,11 @@ class OrchestratorAgent(MCPAgent):
 
     @staticmethod
     def _fallback_summary(
-        repo: str,
-        goal: str,
-        risk: str,
-        issues: List,
-        pr_url: Optional[str],
+            repo: str,
+            goal: str,
+            risk: str,
+            issues: List,
+            pr_url: Optional[str],
     ) -> str:
         return (
             f"Agent completed '{goal}' on `{repo}`. "
@@ -1001,10 +1001,10 @@ class OrchestratorAgent(MCPAgent):
 
     @staticmethod
     def _error_response(
-        reasoning: List[ReasoningStep],
-        message: str,
-        *,
-        token_vault_used: bool = False,
+            reasoning: List[ReasoningStep],
+            message: str,
+            *,
+            token_vault_used: bool = False,
     ) -> Dict:
         """Build a structured error response.
 

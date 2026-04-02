@@ -1,16 +1,16 @@
 from agents.code_execution.agent import CodeExecutionAgent
 
 agent = CodeExecutionAgent()
-app   = agent.app
+app = agent.app
 
 
 @app.get("/")
 async def root():
     return {
-        "message":         "Code Execution Agent is running!",
-        "agent":           agent.name,
+        "message": "Code Execution Agent is running!",
+        "agent": agent.name,
         "available_tools": list(agent.tools.keys()),
-        "docs":            "/docs"
+        "docs": "/docs"
     }
 
 

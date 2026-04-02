@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "authorized_devops_agent"
 version = "0.1.0"
-description = "gitlab_ai_triage_agent"
+description = "authorized_devops_agent"
 authors = ["Tatiana Hlazkina <tatiana.adlock@gmail.com>"]
 license = "MIT"
 readme = "README.md"

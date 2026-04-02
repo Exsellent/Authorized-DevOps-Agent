@@ -37,21 +37,21 @@ logger = logging.getLogger("digest_agent")
 # ── Enums / models ────────────────────────────────────────────────────────────
 
 class DigestStatus(Enum):
-    HEALTHY  = "HEALTHY"
-    WARNING  = "WARNING"
+    HEALTHY = "HEALTHY"
+    WARNING = "WARNING"
     DEGRADED = "DEGRADED"
 
 
 @dataclass
 class DigestValidation:
-    word_count:       int
-    under_limit:      bool
-    has_pr_section:   bool
+    word_count: int
+    under_limit: bool
+    has_pr_section: bool
     has_risk_section: bool
-    has_summary:      bool
-    tone_positive:    bool
-    confidence:       float
-    quality_state:    str
+    has_summary: bool
+    tone_positive: bool
+    confidence: float
+    quality_state: str
 
 
 # ── Agent ─────────────────────────────────────────────────────────────────────
@@ -76,9 +76,9 @@ class DigestAgent(MCPAgent):
         super().__init__("Digest")
         self.llm = LLMClient()
 
-        self.register_tool("generate_digest",    self.generate_digest)
-        self.register_tool("daily_digest",       self.daily_digest)
-        self.register_tool("validate_digest",    self.validate_digest)
+        self.register_tool("generate_digest", self.generate_digest)
+        self.register_tool("daily_digest", self.daily_digest)
+        self.register_tool("validate_digest", self.validate_digest)
         self.register_tool("extract_key_points", self.extract_key_points)
 
         logger.info("DigestAgent initialised")
@@ -101,9 +101,9 @@ class DigestAgent(MCPAgent):
         Quality check tuned for DevOps PR reports, not daily standup notes.
         Checks for: PR section, risk section, summary presence, word count.
         """
-        words      = digest.split()
+        words = digest.split()
         word_count = len(words)
-        lower      = digest.lower()
+        lower = digest.lower()
 
         has_pr_section = any(k in lower for k in [
             "pull request", "pr #", "pr created", "branch", "commit",
@@ -146,10 +146,10 @@ class DigestAgent(MCPAgent):
         )
 
     def _determine_quality_state(
-        self,
-        confidence: float,
-        has_pr_section: bool,
-        has_risk_section: bool,
+            self,
+            confidence: float,
+            has_pr_section: bool,
+            has_risk_section: bool,
     ) -> str:
         if not has_pr_section and not has_risk_section:
             return DigestStatus.DEGRADED.value
@@ -167,18 +167,18 @@ class DigestAgent(MCPAgent):
         Updated to look for DevOps-relevant headings.
         """
         sections: Dict[str, str] = {
-            "pr_summary":   "",
+            "pr_summary": "",
             "risk_summary": "",
-            "next_steps":   "",
-            "full_text":    digest,
+            "next_steps": "",
+            "full_text": digest,
         }
 
         lines = digest.split("\n")
         current: Optional[str] = None
 
         heading_map = {
-            ("pull request", "pr created", "pr #", "branch"):      "pr_summary",
-            ("risk", "security", "issues found", "vulnerabilit"):   "risk_summary",
+            ("pull request", "pr created", "pr #", "branch"): "pr_summary",
+            ("risk", "security", "issues found", "vulnerabilit"): "risk_summary",
             ("next step", "recommendation", "action", "suggested"): "next_steps",
         }
 
@@ -201,14 +201,14 @@ class DigestAgent(MCPAgent):
     # ── Slack message builder ─────────────────────────────────────────────────
 
     def _build_slack_message(
-        self,
-        repo:          str,
-        goal:          str,
-        risk_level:    str,
-        pr_url:        Optional[str],
-        issues_count:  int,
-        health_status: str,
-        summary_text:  str,
+            self,
+            repo: str,
+            goal: str,
+            risk_level: str,
+            pr_url: Optional[str],
+            issues_count: int,
+            health_status: str,
+            summary_text: str,
     ) -> str:
         """
         Compact Slack message consumed by Orchestrator's SlackNotifier.
@@ -236,14 +236,14 @@ class DigestAgent(MCPAgent):
     @metric_counter("digest")
     @log_method
     async def generate_digest(
-        self,
-        repo:          Optional[str]  = None,
-        goal:          Optional[str]  = None,
-        risk_level:    str            = "MEDIUM",
-        issues_found:  Optional[List] = None,
-        pr_url:        Optional[str]  = None,
-        pr_number:     Optional[int]  = None,
-        progress:      Optional[Dict] = None,
+            self,
+            repo: Optional[str] = None,
+            goal: Optional[str] = None,
+            risk_level: str = "MEDIUM",
+            issues_found: Optional[List] = None,
+            pr_url: Optional[str] = None,
+            pr_number: Optional[int] = None,
+            progress: Optional[Dict] = None,
     ) -> Dict[str, Any]:
         """
         Generate executive summary from the full pipeline run.
@@ -263,25 +263,25 @@ class DigestAgent(MCPAgent):
         from shared.models import ReasoningStep  # type hint only
         reasoning: list[ReasoningStep] = []
         issues_found = issues_found or []
-        progress     = progress or {}
+        progress = progress or {}
 
         # Sanitize user-provided inputs before prompt interpolation
-        repo_display  = sanitize_user_input(repo)  if repo  else "repository"
-        goal_display  = sanitize_user_input(goal)  if goal  else "DevOps automation task"
+        repo_display = sanitize_user_input(repo) if repo else "repository"
+        goal_display = sanitize_user_input(goal) if goal else "DevOps automation task"
 
         health_status = progress.get("health_status", progress.get("velocity", "unknown"))
-        issues_count  = len(issues_found)
-        pr_line       = f"PR #{pr_number}: {pr_url}" if pr_url else "No PR created"
+        issues_count = len(issues_found)
+        pr_line = f"PR #{pr_number}: {pr_url}" if pr_url else "No PR created"
 
         self._step(
             reasoning,
             "Generating executive summary from pipeline results",
             input_data={
-                "repo":          repo_display,
-                "goal":          goal_display,
-                "risk_level":    risk_level,
-                "issues_count":  issues_count,
-                "pr_created":    pr_url is not None,
+                "repo": repo_display,
+                "goal": goal_display,
+                "risk_level": risk_level,
+                "issues_count": issues_count,
+                "pr_created": pr_url is not None,
                 "health_status": health_status,
             },
         )
@@ -341,7 +341,7 @@ Requirements:
             output_data={"prompt_length": len(prompt)},
         )
 
-        digest       = ""
+        digest = ""
         llm_fallback = False
 
         try:
@@ -398,12 +398,12 @@ Overall risk level assessed as **{risk_level}**.
             reasoning,
             "Digest quality validated",
             output_data={
-                "word_count":       validation.word_count,
-                "quality_state":    validation.quality_state,
-                "confidence":       round(validation.confidence, 2),
-                "has_pr_section":   validation.has_pr_section,
+                "word_count": validation.word_count,
+                "quality_state": validation.quality_state,
+                "confidence": round(validation.confidence, 2),
+                "has_pr_section": validation.has_pr_section,
                 "has_risk_section": validation.has_risk_section,
-                "llm_fallback":     llm_fallback,
+                "llm_fallback": llm_fallback,
             },
         )
 
@@ -420,8 +420,8 @@ Overall risk level assessed as **{risk_level}**.
             reasoning,
             "Executive summary generation complete",
             output_data={
-                "auto_actions":  auto_actions,
-                "pr_created":    pr_url is not None,
+                "auto_actions": auto_actions,
+                "pr_created": pr_url is not None,
                 "quality_state": validation.quality_state,
             },
         )
@@ -446,40 +446,40 @@ Overall risk level assessed as **{risk_level}**.
 
         return {
             # ── Fields read by Orchestrator ───────────────────────────────────
-            "summary":       digest,          # main text for UI + Orchestrator
-            "slack_message": slack_message,   # compact Slack notification
+            "summary": digest,  # main text for UI + Orchestrator
+            "slack_message": slack_message,  # compact Slack notification
 
             # ── Structured data ───────────────────────────────────────────────
-            "sections":      sections,
-            "validation":    asdict(validation),
+            "sections": sections,
+            "validation": asdict(validation),
             "quality_state": validation.quality_state,
 
             # ── Pipeline context (echoed for UI) ──────────────────────────────
-            "repo":          repo_display,
-            "goal":          goal_display,
-            "pr_url":        pr_url,
-            "pr_number":     pr_number,
-            "risk_level":    risk_level,
-            "issues_count":  issues_count,
+            "repo": repo_display,
+            "goal": goal_display,
+            "pr_url": pr_url,
+            "pr_number": pr_number,
+            "risk_level": risk_level,
+            "issues_count": issues_count,
 
             # ── Actions ───────────────────────────────────────────────────────
             "automated_actions": {
-                "actions":          auto_actions,
+                "actions": auto_actions,
                 "escalation_level": (
                     "leadership" if "alert_leadership" in auto_actions
-                    else "pm"    if "notify_pm"        in auto_actions
-                    else "team"  if "send_to_slack"    in auto_actions
+                    else "pm" if "notify_pm" in auto_actions
+                    else "team" if "send_to_slack" in auto_actions
                     else "none"
                 ),
                 "celebration": "post_celebration" in auto_actions,
             },
 
             "fallback_used": llm_fallback,
-            "reasoning":     normalize_reasoning(reasoning),
+            "reasoning": normalize_reasoning(reasoning),
             "metadata": {
-                "agent":             self.name,
+                "agent": self.name,
                 "auth0_token_vault": False,
-                "timestamp":         datetime.now().isoformat(),
+                "timestamp": datetime.now().isoformat(),
             },
         }
 
@@ -488,10 +488,10 @@ Overall risk level assessed as **{risk_level}**.
     @metric_counter("digest")
     @log_method
     async def daily_digest(
-        self,
-        date:    Optional[str] = None,
-        context: Optional[str] = None,
-        repo:    Optional[str] = None,
+            self,
+            date: Optional[str] = None,
+            context: Optional[str] = None,
+            repo: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Standalone daily project digest from free-text context.
@@ -610,9 +610,10 @@ NO markdown. NO code blocks. NO extra text.
             has_pr_section=has_progress_data,
             has_risk_section=has_risks_data,
             has_summary=bool(summary),
-            tone_positive=False,   # not calculated for daily
+            tone_positive=False,  # not calculated for daily
             confidence=0.95 if (has_progress_data or has_risks_data) else 0.7,
-            quality_state=DigestStatus.HEALTHY.value if (has_progress_data and has_risks_data) else DigestStatus.WARNING.value,
+            quality_state=DigestStatus.HEALTHY.value if (
+                    has_progress_data and has_risks_data) else DigestStatus.WARNING.value,
         )
 
         self._step(
@@ -638,22 +639,22 @@ NO markdown. NO code blocks. NO extra text.
         )
 
         return {
-            "date":        date,
-            "repo":        repo_display,
-            "summary":     summary,
-            "sections":    sections,
-            "validation":  asdict(validation),
+            "date": date,
+            "repo": repo_display,
+            "summary": summary,
+            "sections": sections,
+            "validation": asdict(validation),
             "quality_state": validation.quality_state,
             "automated_actions": {
-                "actions":          auto_actions,
+                "actions": auto_actions,
                 "escalation_level": "pm" if "notify_pm" in auto_actions else "team",
             },
             "fallback_used": llm_fallback,
-            "reasoning":     normalize_reasoning(reasoning),
+            "reasoning": normalize_reasoning(reasoning),
             "metadata": {
-                "agent":             self.name,
+                "agent": self.name,
                 "auth0_token_vault": False,
-                "timestamp":         datetime.now().isoformat(),
+                "timestamp": datetime.now().isoformat(),
             },
         }
 
@@ -681,15 +682,15 @@ NO markdown. NO code blocks. NO extra text.
         )
 
         return {
-            "validation":    asdict(validation),
+            "validation": asdict(validation),
             "quality_state": validation.quality_state,
             "passed": (
-                validation.under_limit
-                and validation.confidence > 0.6
-                and validation.has_summary
+                    validation.under_limit
+                    and validation.confidence > 0.6
+                    and validation.has_summary
             ),
-            "reasoning":  normalize_reasoning(reasoning),
-            "timestamp":  datetime.now().isoformat(),
+            "reasoning": normalize_reasoning(reasoning),
+            "timestamp": datetime.now().isoformat(),
         }
 
     # ── MCP Tool: extract_key_points ──────────────────────────────────────────
@@ -707,7 +708,7 @@ NO markdown. NO code blocks. NO extra text.
             input_data={"digest_length": len(digest)},
         )
 
-        sections   = self._extract_sections(digest)
+        sections = self._extract_sections(digest)
         validation = self._validate_digest_quality(digest)
 
         if sections["pr_summary"].strip() and sections["risk_summary"].strip():
@@ -721,7 +722,7 @@ NO markdown. NO code blocks. NO extra text.
             reasoning,
             "Extraction complete",
             output_data={
-                "method":        method,
+                "method": method,
                 "quality_state": validation.quality_state,
                 "sections_found": sum(
                     1 for k, v in sections.items()
@@ -731,10 +732,10 @@ NO markdown. NO code blocks. NO extra text.
         )
 
         return {
-            "sections":          sections,
-            "quality_state":     validation.quality_state,
+            "sections": sections,
+            "quality_state": validation.quality_state,
             "extraction_method": method,
-            "confidence":        validation.confidence,
-            "reasoning":         normalize_reasoning(reasoning),
-            "timestamp":         datetime.now().isoformat(),
+            "confidence": validation.confidence,
+            "reasoning": normalize_reasoning(reasoning),
+            "timestamp": datetime.now().isoformat(),
         }
